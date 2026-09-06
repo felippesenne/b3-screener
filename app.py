@@ -1,7 +1,6 @@
 import streamlit as st
 
-from data_provider import default_market_data_provider
-from db import database_status, ensure_tracked_tickers, is_database_configured
+from data_provider import YahooFinanceProvider
 from scanner import describe_strategy, scan_universe
 
 st.set_page_config(page_title="B3 Strategy Builder", page_icon="📈", layout="wide")
@@ -125,11 +124,6 @@ def preset_rules(name: str):
 st.title("B3 Strategy Builder")
 st.caption("Monte scanners técnicos combinando indicadores, parâmetros, comparações e cruzamentos sem alterar código.")
 
-try:
-    db_status = database_status()
-except Exception as exc:
-    db_status = {"configured": True, "error": str(exc)}
-
 with st.sidebar:
     st.header("Universo")
     ticker_text = st.text_area("Tickers da B3", value=DEFAULT_TICKERS, height=230)
@@ -137,26 +131,6 @@ with st.sidebar:
     history_period = st.selectbox("Histórico", ["6mo", "1y", "2y", "5y", "10y"], index=2)
     st.divider()
     preset = st.selectbox("Atalho / preset", ["Strategy Builder", "IFR2 < 25 + MME50 ascendente", "Setup MME9 / MME80"])
-
-    st.divider()
-    st.header("Base de dados")
-    if db_status.get("configured") and not db_status.get("error"):
-        st.success("PostgreSQL ativo")
-        if db_status.get("latest_market_date"):
-            st.caption(f"Data-base mais recente: {db_status['latest_market_date'].strftime('%d/%m/%Y')}")
-        st.caption(
-            f"{db_status.get('tracked_tickers', 0)} ativos monitorados · "
-            f"{db_status.get('price_rows', 0):,} candles armazenados".replace(",", ".")
-        )
-        last = db_status.get("last_update")
-        if last:
-            st.caption(f"Última rotina: {last.get('status', '—')}")
-    elif db_status.get("error"):
-        st.error("Falha ao acessar PostgreSQL")
-        st.caption(db_status["error"])
-    else:
-        st.warning("PostgreSQL ainda não configurado")
-        st.caption("Enquanto isso, o app consulta o Yahoo Finance diretamente.")
 
 rules = preset_rules(preset)
 
@@ -210,14 +184,7 @@ if run:
         st.error("Informe pelo menos um ticker.")
         st.stop()
 
-    if is_database_configured():
-        try:
-            ensure_tracked_tickers(tickers)
-        except Exception as exc:
-            st.warning(f"Não foi possível registrar os tickers no banco: {exc}")
-
-    provider = default_market_data_provider()
-
+    provider = YahooFinanceProvider()
     with st.spinner(f"Analisando {len(tickers)} ativos..."):
         result, errors = scan_universe(tickers, provider, timeframe, history_period, rules)
 
@@ -252,12 +219,4 @@ if run:
                 st.write(f"**{ticker}:** {msg}")
 
 st.divider()
-if is_database_configured():
-    st.caption(
-        "O screener lê o histórico do PostgreSQL. A rotina agendada atualiza os ativos às 20h de Brasília; "
-        "Yahoo Finance é usado somente para ingestão e backfill de ativos ainda ausentes."
-    )
-else:
-    st.caption(
-        "DATABASE_URL ainda não configurada. Temporariamente, os dados são consultados diretamente do Yahoo Finance."
-    )
+st.caption("Dados: Yahoo Finance via yfinance. O screener consulta o histórico disponível a cada execução.")
