@@ -1,9 +1,10 @@
 import streamlit as st
 
+from bdr_universe import BDRS
 from classic_setups import CONTEXT_FILTERS, describe_context_filters
 from data_provider import YahooFinanceProvider
 from scanner import describe_strategy, scan_universe
-from universes import BDRS, FAVORITE_23, IBOVESPA, fetch_all_b3_tickers, universe_text
+from universes import FAVORITE_23, IBOVESPA, fetch_all_b3_tickers, universe_text
 
 st.set_page_config(page_title="B3 Strategy Builder", page_icon="📈", layout="wide")
 
