@@ -60,17 +60,6 @@ def _setup_91_state(df: pd.DataFrame, ema9: pd.Series, side: str) -> dict:
         return {"passed": False, "status": "nenhuma virada válida da MME9"}
 
     trigger_idx = turns[-1]
-
-    # O setup perde validade se a MME9 deixar de apontar na direção do sinal
-    # antes da entrada.
-    for j in range(trigger_idx + 1, len(ema9)):
-        if not (_finite(ema9.iloc[j - 1]) and _finite(ema9.iloc[j])):
-            return {"passed": False, "status": "sem dados suficientes"}
-        if side == "buy" and ema9.iloc[j] <= ema9.iloc[j - 1]:
-            return {"passed": False, "status": "MME9 deixou de apontar para cima"}
-        if side == "sell" and ema9.iloc[j] >= ema9.iloc[j - 1]:
-            return {"passed": False, "status": "MME9 deixou de apontar para baixo"}
-
     trigger_high = float(df["High"].iloc[trigger_idx])
     trigger_low = float(df["Low"].iloc[trigger_idx])
     trigger_date = df.index[trigger_idx]
@@ -92,13 +81,28 @@ def _setup_91_state(df: pd.DataFrame, ema9: pd.Series, side: str) -> dict:
         ]
         direction = "Venda"
 
+    first_break = breaks[0] if breaks else None
+
+    # Enquanto o gatilho ainda não foi rompido, a MME9 precisa continuar
+    # apontando na direção do setup. No candle que efetivamente rompe o gatilho,
+    # a ordem já teria sido executada intrabar; por isso a inclinação no
+    # fechamento desse mesmo candle não invalida uma entrada já acionada.
+    validation_end = first_break if first_break is not None else len(ema9)
+    for j in range(trigger_idx + 1, validation_end):
+        if not (_finite(ema9.iloc[j - 1]) and _finite(ema9.iloc[j])):
+            return {"passed": False, "status": "sem dados suficientes"}
+        if side == "buy" and ema9.iloc[j] <= ema9.iloc[j - 1]:
+            return {"passed": False, "status": "MME9 deixou de apontar para cima antes da entrada"}
+        if side == "sell" and ema9.iloc[j] >= ema9.iloc[j - 1]:
+            return {"passed": False, "status": "MME9 deixou de apontar para baixo antes da entrada"}
+
     if trigger_idx == len(df) - 1:
         status = "Candle-gatilho formado"
         passed = True
-    elif not breaks:
+    elif first_break is None:
         status = "Aguardando rompimento"
         passed = True
-    elif breaks[0] == len(df) - 1:
+    elif first_break == len(df) - 1:
         status = "Entrada acionada no último candle"
         passed = True
     else:
