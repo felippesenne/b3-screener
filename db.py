@@ -47,7 +47,14 @@ data_updates = Table(
 
 
 def database_url() -> str | None:
-    return os.getenv("DATABASE_URL")
+    url = os.getenv("DATABASE_URL")
+    if url:
+        return url
+    try:
+        import streamlit as st
+        return st.secrets.get("DATABASE_URL")
+    except Exception:
+        return None
 
 
 def is_database_configured() -> bool:
