@@ -101,64 +101,97 @@ OPERATORS = {
     "Descendente": "falling",
 }
 
+# Streamlit exige que toda chave de widget seja única dentro de uma execução.
+# O contador por prefixo protege o Strategy Builder mesmo se um editor for
+# renderizado mais de uma vez no mesmo ciclo por mudanças dinâmicas da interface.
+_EDITOR_OCCURRENCES = {}
+
+
+def _editor_scope(prefix: str) -> str:
+    occurrence = _EDITOR_OCCURRENCES.get(prefix, 0)
+    _EDITOR_OCCURRENCES[prefix] = occurrence + 1
+    return f"{prefix}__{occurrence}"
+
 
 def indicator_editor(prefix: str, default_type="IFR (RSI)") -> dict:
-    choice = st.selectbox("Indicador", INDICATORS, index=INDICATORS.index(default_type), key=f"{prefix}_kind")
+    scope = _editor_scope(prefix)
+    choice = st.selectbox(
+        "Indicador",
+        INDICATORS,
+        index=INDICATORS.index(default_type),
+        key=f"{scope}_kind",
+    )
 
     if choice == "Preço":
-        field_label = st.selectbox("Preço", ["Fechamento", "Abertura", "Máxima", "Mínima"], key=f"{prefix}_field")
+        field_label = st.selectbox(
+            "Preço",
+            ["Fechamento", "Abertura", "Máxima", "Mínima"],
+            key=f"{scope}_field",
+        )
         field = {"Fechamento": "Close", "Abertura": "Open", "Máxima": "High", "Mínima": "Low"}[field_label]
         return {"kind": "PRICE", "field": field}
 
     if choice == "IFR (RSI)":
-        period = st.number_input("Período IFR", 2, 200, 14, key=f"{prefix}_period")
+        period = st.number_input("Período IFR", 2, 200, 14, key=f"{scope}_rsi_period")
         return {"kind": "RSI", "period": int(period)}
 
     if choice == "MME (EMA)":
-        period = st.number_input("Período MME", 2, 500, 9, key=f"{prefix}_period")
+        period = st.number_input("Período MME", 2, 500, 9, key=f"{scope}_ema_period")
         return {"kind": "EMA", "period": int(period)}
 
     if choice == "MMS (SMA)":
-        period = st.number_input("Período MMS", 2, 500, 20, key=f"{prefix}_period")
+        period = st.number_input("Período MMS", 2, 500, 20, key=f"{scope}_sma_period")
         return {"kind": "SMA", "period": int(period)}
 
     if choice == "MACD":
         c1, c2, c3 = st.columns(3)
-        fast = c1.number_input("Rápida", 2, 100, 12, key=f"{prefix}_fast")
-        slow = c2.number_input("Lenta", 3, 200, 26, key=f"{prefix}_slow")
-        signal = c3.number_input("Sinal", 2, 100, 9, key=f"{prefix}_signal")
-        output_label = st.selectbox("Saída", ["Linha MACD", "Linha de sinal", "Histograma"], key=f"{prefix}_output")
+        fast = c1.number_input("Rápida", 2, 100, 12, key=f"{scope}_macd_fast")
+        slow = c2.number_input("Lenta", 3, 200, 26, key=f"{scope}_macd_slow")
+        signal = c3.number_input("Sinal", 2, 100, 9, key=f"{scope}_macd_signal")
+        output_label = st.selectbox(
+            "Saída",
+            ["Linha MACD", "Linha de sinal", "Histograma"],
+            key=f"{scope}_macd_output",
+        )
         output = {"Linha MACD": "macd", "Linha de sinal": "signal", "Histograma": "hist"}[output_label]
         return {"kind": "MACD", "fast": int(fast), "slow": int(slow), "signal": int(signal), "output": output}
 
     if choice == "Bandas de Bollinger":
         c1, c2 = st.columns(2)
-        period = c1.number_input("Período", 2, 300, 20, key=f"{prefix}_period")
-        std = c2.number_input("Desvios", 0.1, 5.0, 2.0, 0.1, key=f"{prefix}_std")
-        output_label = st.selectbox("Saída", ["Banda superior", "Média", "Banda inferior", "%B", "Bandwidth"], key=f"{prefix}_output")
+        period = c1.number_input("Período", 2, 300, 20, key=f"{scope}_bb_period")
+        std = c2.number_input("Desvios", 0.1, 5.0, 2.0, 0.1, key=f"{scope}_bb_std")
+        output_label = st.selectbox(
+            "Saída",
+            ["Banda superior", "Média", "Banda inferior", "%B", "Bandwidth"],
+            key=f"{scope}_bb_output",
+        )
         output = {"Banda superior": "upper", "Média": "middle", "Banda inferior": "lower", "%B": "pctb", "Bandwidth": "bandwidth"}[output_label]
         return {"kind": "BB", "period": int(period), "std": float(std), "output": output}
 
     if choice == "Estocástico":
         c1, c2, c3 = st.columns(3)
-        k = c1.number_input("%K", 2, 100, 14, key=f"{prefix}_k")
-        smooth = c2.number_input("Suavização K", 1, 20, 3, key=f"{prefix}_smooth")
-        d = c3.number_input("%D", 1, 20, 3, key=f"{prefix}_d")
-        output_label = st.selectbox("Saída", ["%K", "%D"], key=f"{prefix}_output")
+        k = c1.number_input("%K", 2, 100, 14, key=f"{scope}_stoch_k")
+        smooth = c2.number_input("Suavização K", 1, 20, 3, key=f"{scope}_stoch_smooth")
+        d = c3.number_input("%D", 1, 20, 3, key=f"{scope}_stoch_d")
+        output_label = st.selectbox("Saída", ["%K", "%D"], key=f"{scope}_stoch_output")
         return {"kind": "STOCH", "k_period": int(k), "smooth_k": int(smooth), "d_period": int(d), "output": "k" if output_label == "%K" else "d"}
 
     if choice == "ADX / DI":
-        period = st.number_input("Período ADX", 2, 100, 14, key=f"{prefix}_period")
-        output_label = st.selectbox("Saída", ["ADX", "+DI", "-DI"], key=f"{prefix}_output")
+        period = st.number_input("Período ADX", 2, 100, 14, key=f"{scope}_adx_period")
+        output_label = st.selectbox("Saída", ["ADX", "+DI", "-DI"], key=f"{scope}_adx_output")
         output = {"ADX": "adx", "+DI": "plus_di", "-DI": "minus_di"}[output_label]
         return {"kind": "ADX", "period": int(period), "output": output}
 
     if choice == "ATR":
-        period = st.number_input("Período ATR", 2, 100, 14, key=f"{prefix}_period")
+        period = st.number_input("Período ATR", 2, 100, 14, key=f"{scope}_atr_period")
         return {"kind": "ATR", "period": int(period)}
 
-    period = st.number_input("Período da média de volume", 2, 300, 20, key=f"{prefix}_period")
-    output_label = st.selectbox("Saída", ["Volume atual", "Média de volume", "Volume / média"], key=f"{prefix}_output")
+    period = st.number_input("Período da média de volume", 2, 300, 20, key=f"{scope}_volume_period")
+    output_label = st.selectbox(
+        "Saída",
+        ["Volume atual", "Média de volume", "Volume / média"],
+        key=f"{scope}_volume_output",
+    )
     output = {"Volume atual": "volume", "Média de volume": "average", "Volume / média": "ratio"}[output_label]
     return {"kind": "VOLUME", "period": int(period), "output": output}
 
