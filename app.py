@@ -5,6 +5,7 @@ from classic_setups import CONTEXT_FILTERS, describe_context_filters
 from data_provider import YahooFinanceProvider
 from scanner import describe_strategy, scan_universe
 from universes import FAVORITE_23, IBOVESPA, fetch_all_b3_tickers, universe_text
+from strategy_images import get_preset_image_path
 
 st.set_page_config(page_title="B3 Strategy Builder", page_icon="📈", layout="wide")
 
@@ -314,6 +315,10 @@ if rules is None:
 else:
     st.subheader("Preset carregado")
     st.info(describe_strategy(rules))
+
+    image_path = get_preset_image_path(preset)
+    if image_path:
+        st.image(image_path, use_container_width=True)
 
 st.subheader("Estratégia atual")
 st.code(describe_strategy(rules), language=None)
