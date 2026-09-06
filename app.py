@@ -3,7 +3,7 @@ import streamlit as st
 from classic_setups import CONTEXT_FILTERS, describe_context_filters
 from data_provider import YahooFinanceProvider
 from scanner import describe_strategy, scan_universe
-from universes import FAVORITE_23, IBOVESPA, fetch_all_b3_tickers, universe_text
+from universes import BDRS, FAVORITE_23, IBOVESPA, fetch_all_b3_tickers, universe_text
 
 st.set_page_config(page_title="B3 Strategy Builder", page_icon="📈", layout="wide")
 
@@ -216,6 +216,7 @@ with st.sidebar:
         [
             "Todos os ativos da B3",
             "Ativos do Ibovespa",
+            "BDRs",
             "Meus 23 ativos",
         ],
         index=1,
@@ -231,6 +232,8 @@ with st.sidebar:
             universe_error = str(exc)
     elif universe_name == "Ativos do Ibovespa":
         selected_tickers = IBOVESPA
+    elif universe_name == "BDRs":
+        selected_tickers = BDRS
     else:
         selected_tickers = FAVORITE_23
 
