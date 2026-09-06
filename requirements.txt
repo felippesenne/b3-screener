@@ -2,5 +2,3 @@ streamlit>=1.40,<2.0
 pandas>=2.2,<3.0
 numpy>=1.26,<3.0
 yfinance>=0.2.54
-SQLAlchemy>=2.0,<3.0
-psycopg[binary]>=3.2,<4.0
