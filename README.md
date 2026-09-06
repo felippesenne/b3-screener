@@ -1,19 +1,20 @@
-# B3 Screener — Streamlit
+# B3 Strategy Builder — Streamlit
 
-MVP de screener técnico para ações da B3.
+Screener técnico para ações da B3 com construtor visual de estratégias e camada própria de dados.
 
 ## Recursos
 
 - Universo de tickers editável
 - Timeframes diário, semanal e mensal
-- IFR(2)
-- MME 9, 50, 80 e 200
-- Inclinação das MMEs
-- Filtro preço > MME200
-- Preset IFR2 < 25 + MME50 ascendente
-- Preset MME9 / MME80
+- Strategy Builder com múltiplas condições AND/OR
+- IFR/RSI, MME/EMA, MMS/SMA, MACD, Bollinger, Estocástico, ADX/DI, ATR, Volume e Preço
+- Comparações com valor fixo, preço ou outro indicador
+- Cruzamentos e inclinação ascendente/descendente
+- Auditoria das condições por ativo
 - Exportação CSV
-- Arquitetura preparada para trocar a fonte de dados
+- PostgreSQL para histórico próprio de candles
+- Backfill automático de até 10 anos para ativos novos
+- Atualização incremental automática às 20h de Brasília, de segunda a sexta
 
 ## Rodar localmente
 
@@ -26,38 +27,48 @@ pip install -r requirements.txt
 streamlit run app.py
 ```
 
-No Windows:
+## Banco PostgreSQL
 
-```powershell
-python -m venv .venv
-.venv\Scripts\activate
-pip install -r requirements.txt
-streamlit run app.py
+Defina a variável `DATABASE_URL` com uma conexão PostgreSQL, por exemplo:
+
+```text
+postgresql+psycopg://usuario:senha@host:5432/database?sslmode=require
 ```
 
-## Deploy no Streamlit Community Cloud
+As tabelas são criadas automaticamente na primeira conexão.
 
-Use este repositório, branch `main`, com `app.py` como arquivo principal.
+### Streamlit Community Cloud
 
-O Streamlit instalará automaticamente as dependências listadas em `requirements.txt`.
+Em **Manage app → Settings → Secrets**, adicione:
 
-## Fonte de dados
+```toml
+DATABASE_URL = "postgresql+psycopg://usuario:senha@host:5432/database?sslmode=require"
+```
 
-O MVP usa `yfinance` / Yahoo Finance.
+O app passará a ler os candles do PostgreSQL. Um ticker que ainda não exista no banco recebe backfill automático e passa a ser monitorado.
 
-Isso é adequado para prototipação e estudos, mas não deve ser considerado uma fonte oficial da B3, nem uma infraestrutura de produção com garantia de disponibilidade.
+### GitHub Actions
 
-A classe `MarketDataProvider` em `data_provider.py` permite trocar o Yahoo por outro fornecedor sem alterar a lógica principal do scanner.
+Em **Repository → Settings → Secrets and variables → Actions**, crie um secret chamado `DATABASE_URL` com a mesma conexão.
 
-## Próximas versões sugeridas
+O workflow `.github/workflows/update-market-data.yml` roda automaticamente às **20:00 de Brasília**, de segunda a sexta, e também pode ser disparado manualmente em **Actions → Atualizar dados B3 → Run workflow**.
 
-1. Universo automático do Ibovespa / B3
-2. Banco PostgreSQL
-3. Cache de cotações
-4. Histórico de sinais
-5. Gráficos por ativo
-6. Backtest
-7. Scanner agendado
-8. Alertas por e-mail
-9. Login
-10. Deploy em produção com fonte de dados profissional
+Em feriados ou dias sem pregão, a fonte simplesmente continuará retornando o último pregão disponível; não é criada uma data fictícia no banco.
+
+## Arquitetura de dados
+
+- `market_prices`: OHLCV histórico por ticker/data
+- `tracked_tickers`: ativos que devem ser atualizados diariamente
+- `data_updates`: auditoria de cada rotina de atualização
+- `update_market_data.py`: ingestão incremental
+- `data_provider.py`: leitura do PostgreSQL e backfill controlado
+
+O Yahoo Finance continua sendo a fonte externa de ingestão nesta versão. O banco próprio resolve persistência, velocidade, histórico e auditoria, mas não transforma o Yahoo em fonte oficial. A arquitetura permite trocar o fornecedor externo depois sem alterar o Strategy Builder.
+
+## Deploy
+
+No Streamlit Community Cloud use:
+
+- Repository: `felippesenne/b3-screener`
+- Branch: `main`
+- Main file: `app.py`
