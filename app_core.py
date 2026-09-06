@@ -1,0 +1,377 @@
+import streamlit as st
+
+from bdr_universe import BDRS
+from classic_setups import CONTEXT_FILTERS, describe_context_filters
+from data_provider import YahooFinanceProvider
+from scanner import describe_strategy, scan_universe
+from universes import FAVORITE_23, IBOVESPA, fetch_all_b3_tickers, universe_text
+
+st.set_page_config(page_title="B3 Strategy Builder", page_icon="📈", layout="wide")
+
+INDICATORS = [
+    "Preço", "IFR (RSI)", "MME (EMA)", "MMS (SMA)", "MACD",
+    "Bandas de Bollinger", "Estocástico", "ADX / DI", "ATR", "Volume",
+]
+OPERATORS = {
+    "Maior que (>)": ">",
+    "Maior ou igual (>=)": ">=",
+    "Menor que (<)": "<",
+    "Menor ou igual (<=)": "<=",
+    "Igual (=)": "==",
+    "Cruza acima": "crosses_above",
+    "Cruza abaixo": "crosses_below",
+    "Ascendente": "rising",
+    "Descendente": "falling",
+}
+
+PRESETS = [
+    "Strategy Builder",
+    "Stormer — PFR Compra",
+    "Stormer — PFR Venda",
+    "Stormer — Setup 123 Compra",
+    "Stormer — Setup 123 Venda",
+    "Stormer — IFR2 clássico",
+    "Stormer — Éden dos Traders Compra",
+    "Stormer — Éden dos Traders Venda",
+    "Larry Williams — Setup 9.1 Compra",
+    "Larry Williams — Setup 9.1 Venda",
+    "Larry Williams — Setup 9.2 Compra",
+    "Larry Williams — Setup 9.2 Venda",
+    "Larry Williams — Setup 9.3 Compra",
+    "Larry Williams — Setup 9.3 Venda",
+    "Price Action — Inside Bar",
+    "Retorno à média — IFR2 < 25 + MME50 ascendente",
+    "MME9 / MME80 ascendentes",
+]
+
+_EDITOR_OCCURRENCES = {}
+
+
+@st.cache_data(ttl=24 * 60 * 60, show_spinner=False)
+def cached_all_b3_tickers() -> list[str]:
+    return fetch_all_b3_tickers()
+
+
+def _editor_scope(prefix: str) -> str:
+    occurrence = _EDITOR_OCCURRENCES.get(prefix, 0)
+    _EDITOR_OCCURRENCES[prefix] = occurrence + 1
+    return f"{prefix}__{occurrence}"
+
+
+def indicator_editor(prefix: str, default_type="IFR (RSI)") -> dict:
+    scope = _editor_scope(prefix)
+    choice = st.selectbox(
+        "Indicador",
+        INDICATORS,
+        index=INDICATORS.index(default_type),
+        key=f"{scope}_kind",
+    )
+
+    if choice == "Preço":
+        field_label = st.selectbox(
+            "Preço",
+            ["Fechamento", "Abertura", "Máxima", "Mínima"],
+            key=f"{scope}_field",
+        )
+        field = {"Fechamento": "Close", "Abertura": "Open", "Máxima": "High", "Mínima": "Low"}[field_label]
+        return {"kind": "PRICE", "field": field}
+
+    if choice == "IFR (RSI)":
+        period = st.number_input("Período IFR", 2, 200, 14, key=f"{scope}_rsi_period")
+        return {"kind": "RSI", "period": int(period)}
+
+    if choice == "MME (EMA)":
+        period = st.number_input("Período MME", 2, 500, 9, key=f"{scope}_ema_period")
+        return {"kind": "EMA", "period": int(period)}
+
+    if choice == "MMS (SMA)":
+        period = st.number_input("Período MMS", 2, 500, 20, key=f"{scope}_sma_period")
+        return {"kind": "SMA", "period": int(period)}
+
+    if choice == "MACD":
+        c1, c2, c3 = st.columns(3)
+        fast = c1.number_input("Rápida", 2, 100, 12, key=f"{scope}_macd_fast")
+        slow = c2.number_input("Lenta", 3, 200, 26, key=f"{scope}_macd_slow")
+        signal = c3.number_input("Sinal", 2, 100, 9, key=f"{scope}_macd_signal")
+        output_label = st.selectbox(
+            "Saída",
+            ["Linha MACD", "Linha de sinal", "Histograma"],
+            key=f"{scope}_macd_output",
+        )
+        output = {"Linha MACD": "macd", "Linha de sinal": "signal", "Histograma": "hist"}[output_label]
+        return {"kind": "MACD", "fast": int(fast), "slow": int(slow), "signal": int(signal), "output": output}
+
+    if choice == "Bandas de Bollinger":
+        c1, c2 = st.columns(2)
+        period = c1.number_input("Período", 2, 300, 20, key=f"{scope}_bb_period")
+        std = c2.number_input("Desvios", 0.1, 5.0, 2.0, 0.1, key=f"{scope}_bb_std")
+        output_label = st.selectbox(
+            "Saída",
+            ["Banda superior", "Média", "Banda inferior", "%B", "Bandwidth"],
+            key=f"{scope}_bb_output",
+        )
+        output = {"Banda superior": "upper", "Média": "middle", "Banda inferior": "lower", "%B": "pctb", "Bandwidth": "bandwidth"}[output_label]
+        return {"kind": "BB", "period": int(period), "std": float(std), "output": output}
+
+    if choice == "Estocástico":
+        c1, c2, c3 = st.columns(3)
+        k = c1.number_input("%K", 2, 100, 14, key=f"{scope}_stoch_k")
+        smooth = c2.number_input("Suavização K", 1, 20, 3, key=f"{scope}_stoch_smooth")
+        d = c3.number_input("%D", 1, 20, 3, key=f"{scope}_stoch_d")
+        output_label = st.selectbox("Saída", ["%K", "%D"], key=f"{scope}_stoch_output")
+        return {"kind": "STOCH", "k_period": int(k), "smooth_k": int(smooth), "d_period": int(d), "output": "k" if output_label == "%K" else "d"}
+
+    if choice == "ADX / DI":
+        period = st.number_input("Período ADX", 2, 100, 14, key=f"{scope}_adx_period")
+        output_label = st.selectbox("Saída", ["ADX", "+DI", "-DI"], key=f"{scope}_adx_output")
+        output = {"ADX": "adx", "+DI": "plus_di", "-DI": "minus_di"}[output_label]
+        return {"kind": "ADX", "period": int(period), "output": output}
+
+    if choice == "ATR":
+        period = st.number_input("Período ATR", 2, 100, 14, key=f"{scope}_atr_period")
+        return {"kind": "ATR", "period": int(period)}
+
+    period = st.number_input("Período da média de volume", 2, 300, 20, key=f"{scope}_volume_period")
+    output_label = st.selectbox(
+        "Saída",
+        ["Volume atual", "Média de volume", "Volume / média"],
+        key=f"{scope}_volume_output",
+    )
+    output = {"Volume atual": "volume", "Média de volume": "average", "Volume / média": "ratio"}[output_label]
+    return {"kind": "VOLUME", "period": int(period), "output": output}
+
+
+def preset_rules(name: str):
+    price = {"kind": "PRICE", "field": "Close"}
+    ema9 = {"kind": "EMA", "period": 9}
+
+    if name == "Stormer — PFR Compra":
+        return [{"left": price, "operator": "pfr_buy"}]
+    if name == "Stormer — PFR Venda":
+        return [{"left": price, "operator": "pfr_sell"}]
+    if name == "Stormer — Setup 123 Compra":
+        return [{"left": price, "operator": "setup_123_buy"}]
+    if name == "Stormer — Setup 123 Venda":
+        return [{"left": price, "operator": "setup_123_sell"}]
+    if name == "Stormer — IFR2 clássico":
+        return [{"left": {"kind": "RSI", "period": 2}, "operator": "ifr2_stormer"}]
+    if name == "Stormer — Éden dos Traders Compra":
+        return [
+            {"left": {"kind": "EMA", "period": 8}, "operator": "rising"},
+            {"connector": "AND", "left": {"kind": "EMA", "period": 80}, "operator": "rising"},
+            {
+                "connector": "AND",
+                "left": {"kind": "EMA", "period": 8},
+                "operator": ">",
+                "right_kind": "indicator",
+                "right": {"kind": "EMA", "period": 80},
+            },
+        ]
+    if name == "Stormer — Éden dos Traders Venda":
+        return [
+            {"left": {"kind": "EMA", "period": 8}, "operator": "falling"},
+            {"connector": "AND", "left": {"kind": "EMA", "period": 80}, "operator": "falling"},
+            {
+                "connector": "AND",
+                "left": {"kind": "EMA", "period": 8},
+                "operator": "<",
+                "right_kind": "indicator",
+                "right": {"kind": "EMA", "period": 80},
+            },
+        ]
+    if name == "Larry Williams — Setup 9.1 Compra":
+        return [{"left": ema9, "operator": "setup_91_buy"}]
+    if name == "Larry Williams — Setup 9.1 Venda":
+        return [{"left": ema9, "operator": "setup_91_sell"}]
+    if name == "Larry Williams — Setup 9.2 Compra":
+        return [{"left": ema9, "operator": "setup_92_buy"}]
+    if name == "Larry Williams — Setup 9.2 Venda":
+        return [{"left": ema9, "operator": "setup_92_sell"}]
+    if name == "Larry Williams — Setup 9.3 Compra":
+        return [{"left": ema9, "operator": "setup_93_buy"}]
+    if name == "Larry Williams — Setup 9.3 Venda":
+        return [{"left": ema9, "operator": "setup_93_sell"}]
+    if name == "Price Action — Inside Bar":
+        return [{"left": price, "operator": "inside_bar"}]
+    if name == "Retorno à média — IFR2 < 25 + MME50 ascendente":
+        return [
+            {"left": {"kind": "RSI", "period": 2}, "operator": "<", "right_kind": "value", "right_value": 25.0},
+            {"connector": "AND", "left": {"kind": "EMA", "period": 50}, "operator": "rising"},
+        ]
+    if name == "MME9 / MME80 ascendentes":
+        return [
+            {"left": {"kind": "EMA", "period": 9}, "operator": "rising"},
+            {"connector": "AND", "left": {"kind": "EMA", "period": 80}, "operator": "rising"},
+        ]
+    return None
+
+
+st.title("B3 Strategy Builder")
+st.caption("Monte scanners técnicos combinando indicadores, parâmetros, comparações e cruzamentos sem alterar código.")
+
+with st.sidebar:
+    st.header("Universo")
+
+    universe_name = st.selectbox(
+        "Universo predefinido",
+        [
+            "Todos os ativos da B3",
+            "Ativos do Ibovespa",
+            "BDRs",
+            "Meus 23 ativos",
+        ],
+        index=1,
+        key="universe_preset",
+    )
+
+    universe_error = None
+    selected_tickers = None
+    if universe_name == "Todos os ativos da B3":
+        try:
+            selected_tickers = cached_all_b3_tickers()
+        except Exception as exc:
+            universe_error = str(exc)
+    elif universe_name == "Ativos do Ibovespa":
+        selected_tickers = IBOVESPA
+    elif universe_name == "BDRs":
+        selected_tickers = BDRS
+    else:
+        selected_tickers = FAVORITE_23
+
+    if selected_tickers is not None:
+        if st.session_state.get("_loaded_universe") != universe_name:
+            st.session_state["ticker_text"] = universe_text(selected_tickers)
+            st.session_state["_loaded_universe"] = universe_name
+        st.caption(f"{len(selected_tickers)} ativos carregados. A lista abaixo continua editável.")
+        if universe_name == "Todos os ativos da B3":
+            st.caption("A lista ampla é atualizada automaticamente; os preços continuam vindo do Yahoo Finance.")
+    else:
+        st.error("Não foi possível carregar o universo completo da B3 agora.")
+        st.caption(universe_error or "Tente novamente em alguns instantes.")
+        if "ticker_text" not in st.session_state:
+            st.session_state["ticker_text"] = universe_text(IBOVESPA)
+
+    ticker_text = st.text_area(
+        "Tickers",
+        height=420,
+        key="ticker_text",
+        help="Você pode editar a lista manualmente depois de carregar qualquer universo.",
+    )
+
+    timeframe = st.selectbox("Timeframe", ["Diário", "Semanal", "Mensal"])
+    history_period = st.selectbox("Histórico", ["6mo", "1y", "2y", "5y", "10y"], index=2)
+
+    st.divider()
+    st.subheader("Estratégia")
+    preset = st.selectbox("Atalho / preset", PRESETS)
+
+    context_filters = st.multiselect(
+        "Filtros de contexto (opcionais)",
+        CONTEXT_FILTERS,
+        default=[],
+        help="Os filtros são independentes da estratégia e são combinados por AND. Ex.: PFR Compra + Éden dos Traders Compra.",
+    )
+    if context_filters:
+        st.caption(f"Contexto: {describe_context_filters(context_filters)}")
+
+rules = preset_rules(preset)
+
+if rules is None:
+    st.subheader("Construtor de estratégia")
+    st.caption("As regras são avaliadas da esquerda para a direita. Cada condição a partir da segunda pode usar AND ou OR.")
+    rule_count = st.number_input("Número de condições", min_value=1, max_value=10, value=2, step=1)
+    rules = []
+
+    for i in range(int(rule_count)):
+        with st.expander(f"Condição {i + 1}", expanded=True):
+            if i > 0:
+                connector = st.radio("Conector com a condição anterior", ["AND", "OR"], horizontal=True, key=f"rule_{i}_connector")
+            else:
+                connector = None
+
+            st.markdown("**Lado esquerdo**")
+            left = indicator_editor(f"rule_{i}_left", default_type="IFR (RSI)" if i == 0 else "MME (EMA)")
+            operator_label = st.selectbox("Condição", list(OPERATORS.keys()), key=f"rule_{i}_operator")
+            op = OPERATORS[operator_label]
+
+            rule = {"left": left, "operator": op}
+            if connector:
+                rule["connector"] = connector
+
+            if op not in {"rising", "falling"}:
+                compare_with = st.selectbox("Comparar com", ["Valor fixo", "Preço de fechamento", "Outro indicador"], key=f"rule_{i}_right_kind")
+                if compare_with == "Valor fixo":
+                    value = st.number_input("Valor", value=0.0, step=0.1, format="%.4f", key=f"rule_{i}_value")
+                    rule.update({"right_kind": "value", "right_value": float(value)})
+                elif compare_with == "Preço de fechamento":
+                    rule.update({"right_kind": "price"})
+                else:
+                    st.markdown("**Lado direito**")
+                    right = indicator_editor(f"rule_{i}_right", default_type="MME (EMA)")
+                    rule.update({"right_kind": "indicator", "right": right})
+
+            rules.append(rule)
+else:
+    st.subheader("Preset carregado")
+    st.info(describe_strategy(rules))
+
+st.subheader("Estratégia atual")
+st.code(describe_strategy(rules), language=None)
+if context_filters:
+    st.markdown(f"**Filtro de contexto:** {describe_context_filters(context_filters)}")
+
+run = st.button("Rodar screener", type="primary", use_container_width=True)
+
+if run:
+    raw_tickers = [line.strip().upper().replace(".SA", "") for line in ticker_text.splitlines() if line.strip()]
+    tickers = list(dict.fromkeys(raw_tickers))
+    if not tickers:
+        st.error("Informe pelo menos um ticker.")
+        st.stop()
+
+    if len(tickers) > 150:
+        st.info(f"Universo amplo selecionado: {len(tickers)} ativos. A consulta ao Yahoo Finance pode levar mais tempo.")
+
+    provider = YahooFinanceProvider()
+    with st.spinner(f"Analisando {len(tickers)} ativos..."):
+        result, errors = scan_universe(
+            tickers,
+            provider,
+            timeframe,
+            history_period,
+            rules,
+            context_filters=context_filters,
+        )
+
+    if result.empty:
+        st.warning("Nenhum ativo pôde ser analisado.")
+    else:
+        passed = result[result["Passou"] == True].copy()
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Ativos analisados", len(result))
+        c2.metric("Selecionados", len(passed))
+        c3.metric("Taxa de seleção", f"{(len(passed) / len(result) * 100):.1f}%")
+
+        st.subheader("Selecionados")
+        if passed.empty:
+            st.info("Nenhum ativo passou pela estratégia e pelos filtros de contexto atuais.")
+        else:
+            st.dataframe(passed, use_container_width=True, hide_index=True)
+
+        with st.expander("Auditoria — todos os ativos, estratégia e contexto"):
+            st.dataframe(result, use_container_width=True, hide_index=True)
+
+        st.download_button(
+            "Baixar selecionados em CSV",
+            data=passed.to_csv(index=False).encode("utf-8"),
+            file_name="b3_strategy_builder.csv",
+            mime="text/csv",
+        )
+
+    if errors:
+        with st.expander(f"Falhas de dados ({len(errors)})"):
+            for ticker, msg in errors.items():
+                st.write(f"**{ticker}:** {msg}")
+
+st.divider()
+st.caption("Dados de preço: Yahoo Finance via yfinance. O screener consulta o histórico disponível a cada execução.")
