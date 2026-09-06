@@ -202,6 +202,14 @@ def preset_rules(name: str):
             {"left": {"kind": "RSI", "period": 2}, "operator": "<", "right_kind": "value", "right_value": 25.0},
             {"connector": "AND", "left": {"kind": "EMA", "period": 50}, "operator": "rising"},
         ]
+    if name == "Setup 9.1 clássico — Compra":
+        return [
+            {"left": {"kind": "EMA", "period": 9}, "operator": "setup_91_buy"},
+        ]
+    if name == "Setup 9.1 clássico — Venda":
+        return [
+            {"left": {"kind": "EMA", "period": 9}, "operator": "setup_91_sell"},
+        ]
     if name == "Setup MME9 / MME80":
         return [
             {"left": {"kind": "EMA", "period": 9}, "operator": "rising"},
@@ -225,7 +233,16 @@ with st.sidebar:
     timeframe = st.selectbox("Timeframe", ["Diário", "Semanal", "Mensal"])
     history_period = st.selectbox("Histórico", ["6mo", "1y", "2y", "5y", "10y"], index=2)
     st.divider()
-    preset = st.selectbox("Atalho / preset", ["Strategy Builder", "IFR2 < 25 + MME50 ascendente", "Setup MME9 / MME80"])
+    preset = st.selectbox(
+        "Atalho / preset",
+        [
+            "Strategy Builder",
+            "Setup 9.1 clássico — Compra",
+            "Setup 9.1 clássico — Venda",
+            "IFR2 < 25 + MME50 ascendente",
+            "Setup MME9 / MME80",
+        ],
+    )
 
 rules = preset_rules(preset)
 
