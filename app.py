@@ -5,29 +5,85 @@ from scanner import describe_strategy, scan_universe
 
 st.set_page_config(page_title="B3 Strategy Builder", page_icon="📈", layout="wide")
 
-DEFAULT_TICKERS = """AXIA3
+DEFAULT_TICKERS = """ABEV3
+ALOS3
+ASAI3
+AURE3
+AXIA3
+AXIA6
+AZZA3
 B3SA3
 BBAS3
+BBDC3
 BBDC4
 BBSE3
+BEEF3
 BPAC11
+BRAP4
+BRAV3
+BRKM5
+CEAB3
 CMIG4
+CMIN3
+COGN3
 CPFE3
 CPLE3
+CSAN3
 CSMG3
+CSNA3
+CURY3
 CXSE3
+CYRE3
+DIRR3
 EGIE3
+EMBJ3
+ENEV3
+ENGI11
+EQTL3
+FLRY3
+GGBR4
+GOAU4
+HAPV3
+HYPE3
+IGTI11
 ISAE4
+ITSA4
 ITUB4
+KLBN11
+LREN3
+MBRF3
+MGLU3
+MOTV3
+MRVE3
+MULT3
+NATU3
+PETR3
 PETR4
+POMO4
 PRIO3
 PSSA3
+RADL3
+RAIL3
+RDOR3
+RECV3
+RENT3
 SANB11
 SBSP3
+SLCE3
+SMFT3
+SUZB3
 TAEE11
 TIMS3
+TOTS3
+UGPA3
+USIM5
 VALE3
-VIVT3"""
+VAMO3
+VBBR3
+VIVA3
+VIVT3
+WEGE3
+YDUQ3"""
 
 INDICATORS = [
     "Preço", "IFR (RSI)", "MME (EMA)", "MMS (SMA)", "MACD",
@@ -126,7 +182,13 @@ st.caption("Monte scanners técnicos combinando indicadores, parâmetros, compar
 
 with st.sidebar:
     st.header("Universo")
-    ticker_text = st.text_area("Tickers da B3", value=DEFAULT_TICKERS, height=230)
+    ticker_text = st.text_area(
+        "Ativos do Ibovespa",
+        value=DEFAULT_TICKERS,
+        height=420,
+        help="Carteira oficial vigente do Ibovespa B3. A lista continua editável.",
+    )
+    st.caption("79 ativos na carteira padrão do Ibovespa.")
     timeframe = st.selectbox("Timeframe", ["Diário", "Semanal", "Mensal"])
     history_period = st.selectbox("Histórico", ["6mo", "1y", "2y", "5y", "10y"], index=2)
     st.divider()
