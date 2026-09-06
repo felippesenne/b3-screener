@@ -1,0 +1,25 @@
+# Universo inicial. Novos tickers digitados no app são adicionados ao banco
+# e passam a ser atualizados automaticamente nas execuções seguintes.
+AXIA3
+B3SA3
+BBAS3
+BBDC4
+BBSE3
+BPAC11
+CMIG4
+CPFE3
+CPLE3
+CSMG3
+CXSE3
+EGIE3
+ISAE4
+ITUB4
+PETR4
+PRIO3
+PSSA3
+SANB11
+SBSP3
+TAEE11
+TIMS3
+VALE3
+VIVT3
