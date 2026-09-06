@@ -276,13 +276,32 @@ def evaluate_latest(ticker: str, df: pd.DataFrame, rules: list[dict]) -> dict:
 def scan_universe(tickers, provider, timeframe, period, rules):
     rows = []
     errors = {}
+    histories = None
+
+    if len(tickers) > 1 and hasattr(provider, "get_histories"):
+        try:
+            histories, batch_errors = provider.get_histories(list(tickers), period=period)
+            errors.update(batch_errors)
+        except Exception:
+            histories = None
+            errors = {}
+
     for ticker in tickers:
         try:
-            raw = provider.get_history(ticker, period=period)
+            if histories is None:
+                raw = provider.get_history(ticker, period=period)
+            else:
+                raw = histories.get(ticker)
+                if raw is None or raw.empty:
+                    if ticker in errors:
+                        continue
+                    raise ValueError("Sem histórico disponível.")
+
             tf = resample_ohlcv(raw, timeframe)
             if len(tf) < 3:
                 raise ValueError("Histórico insuficiente para cálculo.")
             rows.append(evaluate_latest(ticker, tf, rules))
+            errors.pop(ticker, None)
         except Exception as exc:
             errors[ticker] = str(exc)
 
