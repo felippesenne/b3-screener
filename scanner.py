@@ -28,6 +28,96 @@ def _finite(value) -> bool:
         return False
 
 
+def _setup_91_state(df: pd.DataFrame, ema9: pd.Series, side: str) -> dict:
+    """
+    Detecta o Setup 9.1 clássico.
+
+    Compra:
+    - MME9 vinha caindo;
+    - vira para cima em candle fechado (candle-gatilho);
+    - enquanto a MME9 continuar subindo, o gatilho permanece válido;
+    - entrada no rompimento da máxima do candle-gatilho;
+    - stop na mínima do candle-gatilho.
+
+    Venda é a lógica espelhada.
+    """
+    if len(df) < 3 or len(ema9) < 3:
+        return {"passed": False, "status": "sem dados suficientes"}
+
+    turns = []
+    for i in range(2, len(ema9)):
+        a, b, c = ema9.iloc[i - 2], ema9.iloc[i - 1], ema9.iloc[i]
+        if not (_finite(a) and _finite(b) and _finite(c)):
+            continue
+        if side == "buy":
+            turned = b < a and c > b
+        else:
+            turned = b > a and c < b
+        if turned:
+            turns.append(i)
+
+    if not turns:
+        return {"passed": False, "status": "nenhuma virada válida da MME9"}
+
+    trigger_idx = turns[-1]
+
+    # O setup perde validade se a MME9 deixar de apontar na direção do sinal
+    # antes da entrada.
+    for j in range(trigger_idx + 1, len(ema9)):
+        if not (_finite(ema9.iloc[j - 1]) and _finite(ema9.iloc[j])):
+            return {"passed": False, "status": "sem dados suficientes"}
+        if side == "buy" and ema9.iloc[j] <= ema9.iloc[j - 1]:
+            return {"passed": False, "status": "MME9 deixou de apontar para cima"}
+        if side == "sell" and ema9.iloc[j] >= ema9.iloc[j - 1]:
+            return {"passed": False, "status": "MME9 deixou de apontar para baixo"}
+
+    trigger_high = float(df["High"].iloc[trigger_idx])
+    trigger_low = float(df["Low"].iloc[trigger_idx])
+    trigger_date = df.index[trigger_idx]
+
+    if side == "buy":
+        entry = trigger_high
+        stop = trigger_low
+        breaks = [
+            j for j in range(trigger_idx + 1, len(df))
+            if _finite(df["High"].iloc[j]) and float(df["High"].iloc[j]) > trigger_high
+        ]
+        direction = "Compra"
+    else:
+        entry = trigger_low
+        stop = trigger_high
+        breaks = [
+            j for j in range(trigger_idx + 1, len(df))
+            if _finite(df["Low"].iloc[j]) and float(df["Low"].iloc[j]) < trigger_low
+        ]
+        direction = "Venda"
+
+    if trigger_idx == len(df) - 1:
+        status = "Candle-gatilho formado"
+        passed = True
+    elif not breaks:
+        status = "Aguardando rompimento"
+        passed = True
+    elif breaks[0] == len(df) - 1:
+        status = "Entrada acionada no último candle"
+        passed = True
+    else:
+        status = "Entrada já acionada anteriormente"
+        passed = False
+
+    return {
+        "passed": passed,
+        "status": status,
+        "direction": direction,
+        "trigger_idx": trigger_idx,
+        "trigger_date": trigger_date,
+        "entry": entry,
+        "stop": stop,
+        "trigger_high": trigger_high,
+        "trigger_low": trigger_low,
+    }
+
+
 def evaluate_rule(df: pd.DataFrame, cache: dict, rule: dict) -> tuple[bool, str]:
     left = _series_for(cache, rule["left"])
     op = rule["operator"]
@@ -35,6 +125,12 @@ def evaluate_rule(df: pd.DataFrame, cache: dict, rule: dict) -> tuple[bool, str]
 
     if not _finite(left_now):
         return False, "sem dados suficientes"
+
+    if op in {"setup_91_buy", "setup_91_sell"}:
+        side = "buy" if op == "setup_91_buy" else "sell"
+        state = _setup_91_state(df, left, side)
+        label = f"Setup 9.1 {state.get('direction', 'Compra' if side == 'buy' else 'Venda')}: {state['status']}"
+        return bool(state["passed"]), label
 
     if op in {"rising", "falling"}:
         if len(left) < 2 or not _finite(left.iloc[-2]):
@@ -89,19 +185,26 @@ def describe_strategy(rules: list[dict]) -> str:
     for i, rule in enumerate(rules):
         left = indicator_label(rule["left"])
         op = rule["operator"]
-        op_text = {
-            "<": "<", "<=": "<=", ">": ">", ">=": ">=", "==": "=",
-            "crosses_above": "cruza acima de", "crosses_below": "cruza abaixo de",
-            "rising": "ascendente", "falling": "descendente",
-        }[op]
-        if op in {"rising", "falling"}:
-            expr = f"{left} {op_text}"
-        elif rule.get("right_kind") == "value":
-            expr = f"{left} {op_text} {rule['right_value']:g}"
-        elif rule.get("right_kind") == "price":
-            expr = f"{left} {op_text} Fechamento"
+
+        if op == "setup_91_buy":
+            expr = "Setup 9.1 clássico — Compra: MME9 vinha caindo e virou para cima; entrada no rompimento da máxima do candle-gatilho"
+        elif op == "setup_91_sell":
+            expr = "Setup 9.1 clássico — Venda: MME9 vinha subindo e virou para baixo; entrada no rompimento da mínima do candle-gatilho"
         else:
-            expr = f"{left} {op_text} {indicator_label(rule['right'])}"
+            op_text = {
+                "<": "<", "<=": "<=", ">": ">", ">=": ">=", "==": "=",
+                "crosses_above": "cruza acima de", "crosses_below": "cruza abaixo de",
+                "rising": "ascendente", "falling": "descendente",
+            }[op]
+            if op in {"rising", "falling"}:
+                expr = f"{left} {op_text}"
+            elif rule.get("right_kind") == "value":
+                expr = f"{left} {op_text} {rule['right_value']:g}"
+            elif rule.get("right_kind") == "price":
+                expr = f"{left} {op_text} Fechamento"
+            else:
+                expr = f"{left} {op_text} {indicator_label(rule['right'])}"
+
         if i > 0:
             expr = f"{rule.get('connector', 'AND')} {expr}"
         parts.append(expr)
@@ -119,12 +222,18 @@ def evaluate_latest(ticker: str, df: pd.DataFrame, rules: list[dict]) -> dict:
     checks = []
     rule_details = []
     connectors = []
+    setup_state = None
+
     for idx, rule in enumerate(rules):
         passed, label = evaluate_rule(df, cache, rule)
         checks.append(passed)
         rule_details.append(f"{'✓' if passed else '✗'} {label}")
         if idx > 0:
             connectors.append(rule.get("connector", "AND"))
+
+        if rule["operator"] in {"setup_91_buy", "setup_91_sell"}:
+            side = "buy" if rule["operator"] == "setup_91_buy" else "sell"
+            setup_state = _setup_91_state(df, _series_for(cache, rule["left"]), side)
 
     passed = combine_results(checks, connectors)
     row = {
@@ -135,6 +244,12 @@ def evaluate_latest(ticker: str, df: pd.DataFrame, rules: list[dict]) -> dict:
         "Regras aprovadas": f"{sum(checks)}/{len(checks)}",
         "Detalhes": " | ".join(rule_details),
     }
+
+    if setup_state and "entry" in setup_state:
+        row["Status 9.1"] = setup_state["status"]
+        row["Candle-gatilho"] = setup_state["trigger_date"].strftime("%d/%m/%Y")
+        row["Entrada / gatilho"] = round(float(setup_state["entry"]), 2)
+        row["Stop"] = round(float(setup_state["stop"]), 2)
 
     for rule in rules:
         label = indicator_label(rule["left"])
