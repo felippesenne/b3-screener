@@ -2,88 +2,9 @@ import streamlit as st
 
 from data_provider import YahooFinanceProvider
 from scanner import describe_strategy, scan_universe
+from universes import FAVORITE_23, IBOVESPA, fetch_all_b3_tickers, universe_text
 
 st.set_page_config(page_title="B3 Strategy Builder", page_icon="📈", layout="wide")
-
-DEFAULT_TICKERS = """ABEV3
-ALOS3
-ASAI3
-AURE3
-AXIA3
-AXIA6
-AZZA3
-B3SA3
-BBAS3
-BBDC3
-BBDC4
-BBSE3
-BEEF3
-BPAC11
-BRAP4
-BRAV3
-BRKM5
-CEAB3
-CMIG4
-CMIN3
-COGN3
-CPFE3
-CPLE3
-CSAN3
-CSMG3
-CSNA3
-CURY3
-CXSE3
-CYRE3
-DIRR3
-EGIE3
-EMBJ3
-ENEV3
-ENGI11
-EQTL3
-FLRY3
-GGBR4
-GOAU4
-HAPV3
-HYPE3
-IGTI11
-ISAE4
-ITSA4
-ITUB4
-KLBN11
-LREN3
-MBRF3
-MGLU3
-MOTV3
-MRVE3
-MULT3
-NATU3
-PETR3
-PETR4
-POMO4
-PRIO3
-PSSA3
-RADL3
-RAIL3
-RDOR3
-RECV3
-RENT3
-SANB11
-SBSP3
-SLCE3
-SMFT3
-SUZB3
-TAEE11
-TIMS3
-TOTS3
-UGPA3
-USIM5
-VALE3
-VAMO3
-VBBR3
-VIVA3
-VIVT3
-WEGE3
-YDUQ3"""
 
 INDICATORS = [
     "Preço", "IFR (RSI)", "MME (EMA)", "MMS (SMA)", "MACD",
@@ -101,10 +22,12 @@ OPERATORS = {
     "Descendente": "falling",
 }
 
-# Streamlit exige que toda chave de widget seja única dentro de uma execução.
-# O contador por prefixo protege o Strategy Builder mesmo se um editor for
-# renderizado mais de uma vez no mesmo ciclo por mudanças dinâmicas da interface.
 _EDITOR_OCCURRENCES = {}
+
+
+@st.cache_data(ttl=24 * 60 * 60, show_spinner=False)
+def cached_all_b3_tickers() -> list[str]:
+    return fetch_all_b3_tickers()
 
 
 def _editor_scope(prefix: str) -> str:
@@ -203,13 +126,9 @@ def preset_rules(name: str):
             {"connector": "AND", "left": {"kind": "EMA", "period": 50}, "operator": "rising"},
         ]
     if name == "Setup 9.1 clássico — Compra":
-        return [
-            {"left": {"kind": "EMA", "period": 9}, "operator": "setup_91_buy"},
-        ]
+        return [{"left": {"kind": "EMA", "period": 9}, "operator": "setup_91_buy"}]
     if name == "Setup 9.1 clássico — Venda":
-        return [
-            {"left": {"kind": "EMA", "period": 9}, "operator": "setup_91_sell"},
-        ]
+        return [{"left": {"kind": "EMA", "period": 9}, "operator": "setup_91_sell"}]
     if name == "Setup MME9 / MME80":
         return [
             {"left": {"kind": "EMA", "period": 9}, "operator": "rising"},
@@ -223,13 +142,50 @@ st.caption("Monte scanners técnicos combinando indicadores, parâmetros, compar
 
 with st.sidebar:
     st.header("Universo")
-    ticker_text = st.text_area(
-        "Ativos do Ibovespa",
-        value=DEFAULT_TICKERS,
-        height=420,
-        help="Carteira oficial vigente do Ibovespa B3. A lista continua editável.",
+
+    universe_name = st.selectbox(
+        "Universo predefinido",
+        [
+            "Todos os ativos da B3",
+            "Ativos do Ibovespa",
+            "Meus 23 ativos",
+        ],
+        index=1,
+        key="universe_preset",
     )
-    st.caption("79 ativos na carteira padrão do Ibovespa.")
+
+    universe_error = None
+    selected_tickers = None
+    if universe_name == "Todos os ativos da B3":
+        try:
+            selected_tickers = cached_all_b3_tickers()
+        except Exception as exc:
+            universe_error = str(exc)
+    elif universe_name == "Ativos do Ibovespa":
+        selected_tickers = IBOVESPA
+    else:
+        selected_tickers = FAVORITE_23
+
+    if selected_tickers is not None:
+        if st.session_state.get("_loaded_universe") != universe_name:
+            st.session_state["ticker_text"] = universe_text(selected_tickers)
+            st.session_state["_loaded_universe"] = universe_name
+        st.caption(f"{len(selected_tickers)} ativos carregados. A lista abaixo continua editável.")
+        if universe_name == "Todos os ativos da B3":
+            st.caption("A lista ampla é atualizada automaticamente; os preços continuam vindo do Yahoo Finance.")
+    else:
+        st.error("Não foi possível carregar o universo completo da B3 agora.")
+        st.caption(universe_error or "Tente novamente em alguns instantes.")
+        if "ticker_text" not in st.session_state:
+            st.session_state["ticker_text"] = universe_text(IBOVESPA)
+
+    ticker_text = st.text_area(
+        "Tickers",
+        height=420,
+        key="ticker_text",
+        help="Você pode editar a lista manualmente depois de carregar qualquer universo.",
+    )
+
     timeframe = st.selectbox("Timeframe", ["Diário", "Semanal", "Mensal"])
     history_period = st.selectbox("Histórico", ["6mo", "1y", "2y", "5y", "10y"], index=2)
     st.divider()
@@ -291,10 +247,14 @@ st.code(describe_strategy(rules), language=None)
 run = st.button("Rodar screener", type="primary", use_container_width=True)
 
 if run:
-    tickers = [line.strip().upper().replace(".SA", "") for line in ticker_text.splitlines() if line.strip()]
+    raw_tickers = [line.strip().upper().replace(".SA", "") for line in ticker_text.splitlines() if line.strip()]
+    tickers = list(dict.fromkeys(raw_tickers))
     if not tickers:
         st.error("Informe pelo menos um ticker.")
         st.stop()
+
+    if len(tickers) > 150:
+        st.info(f"Universo amplo selecionado: {len(tickers)} ativos. A consulta ao Yahoo Finance pode levar mais tempo.")
 
     provider = YahooFinanceProvider()
     with st.spinner(f"Analisando {len(tickers)} ativos..."):
@@ -331,4 +291,4 @@ if run:
                 st.write(f"**{ticker}:** {msg}")
 
 st.divider()
-st.caption("Dados: Yahoo Finance via yfinance. O screener consulta o histórico disponível a cada execução.")
+st.caption("Dados de preço: Yahoo Finance via yfinance. O screener consulta o histórico disponível a cada execução.")
