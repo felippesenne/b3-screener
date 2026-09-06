@@ -83,10 +83,6 @@ def _setup_91_state(df: pd.DataFrame, ema9: pd.Series, side: str) -> dict:
 
     first_break = breaks[0] if breaks else None
 
-    # Enquanto o gatilho ainda não foi rompido, a MME9 precisa continuar
-    # apontando na direção do setup. No candle que efetivamente rompe o gatilho,
-    # a ordem já teria sido executada intrabar; por isso a inclinação no
-    # fechamento desse mesmo candle não invalida uma entrada já acionada.
     validation_end = first_break if first_break is not None else len(ema9)
     for j in range(trigger_idx + 1, validation_end):
         if not (_finite(ema9.iloc[j - 1]) and _finite(ema9.iloc[j])):
@@ -133,8 +129,10 @@ def evaluate_rule(df: pd.DataFrame, cache: dict, rule: dict) -> tuple[bool, str]
     if op in {"setup_91_buy", "setup_91_sell"}:
         side = "buy" if op == "setup_91_buy" else "sell"
         state = _setup_91_state(df, left, side)
-        label = f"Setup 9.1 {state.get('direction', 'Compra' if side == 'buy' else 'Venda')}: {state['status']}"
-        return bool(state["passed"]), label
+        direction = state.get("direction", "Compra" if side == "buy" else "Venda")
+        status = state.get("status", "estado indisponível")
+        label = f"Setup 9.1 {direction}: {status}"
+        return bool(state.get("passed", False)), label
 
     if op in {"rising", "falling"}:
         if len(left) < 2 or not _finite(left.iloc[-2]):
@@ -185,33 +183,45 @@ def combine_results(values: list[bool], connectors: list[str]) -> bool:
 
 
 def describe_strategy(rules: list[dict]) -> str:
+    """Descrição segura para regras genéricas e presets especiais."""
     parts = []
+    op_labels = {
+        "<": "<",
+        "<=": "<=",
+        ">": ">",
+        ">=": ">=",
+        "==": "=",
+        "crosses_above": "cruza acima de",
+        "crosses_below": "cruza abaixo de",
+        "rising": "ascendente",
+        "falling": "descendente",
+    }
+
     for i, rule in enumerate(rules):
-        left = indicator_label(rule["left"])
-        op = rule["operator"]
+        op = rule.get("operator", "")
 
         if op == "setup_91_buy":
             expr = "Setup 9.1 clássico — Compra: MME9 vinha caindo e virou para cima; entrada no rompimento da máxima do candle-gatilho"
         elif op == "setup_91_sell":
             expr = "Setup 9.1 clássico — Venda: MME9 vinha subindo e virou para baixo; entrada no rompimento da mínima do candle-gatilho"
         else:
-            op_text = {
-                "<": "<", "<=": "<=", ">": ">", ">=": ">=", "==": "=",
-                "crosses_above": "cruza acima de", "crosses_below": "cruza abaixo de",
-                "rising": "ascendente", "falling": "descendente",
-            }[op]
+            left = indicator_label(rule["left"])
+            op_text = op_labels.get(op, op or "operador desconhecido")
             if op in {"rising", "falling"}:
                 expr = f"{left} {op_text}"
             elif rule.get("right_kind") == "value":
-                expr = f"{left} {op_text} {rule['right_value']:g}"
+                expr = f"{left} {op_text} {float(rule.get('right_value', 0)):g}"
             elif rule.get("right_kind") == "price":
                 expr = f"{left} {op_text} Fechamento"
-            else:
+            elif rule.get("right_kind") == "indicator" and rule.get("right"):
                 expr = f"{left} {op_text} {indicator_label(rule['right'])}"
+            else:
+                expr = f"{left} {op_text}".strip()
 
         if i > 0:
             expr = f"{rule.get('connector', 'AND')} {expr}"
         parts.append(expr)
+
     return " ".join(parts)
 
 
