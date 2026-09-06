@@ -2,8 +2,15 @@ from __future__ import annotations
 
 import math
 import operator
+
 import pandas as pd
 
+from classic_setups import (
+    SPECIAL_SETUP_OPS,
+    evaluate_context_filters,
+    special_setup_description,
+    special_setup_state,
+)
 from indicators import build_series_cache, indicator_label, resample_ohlcv, spec_key
 
 OPS = {"<": operator.lt, "<=": operator.le, ">": operator.gt, ">=": operator.ge, "==": operator.eq}
@@ -29,18 +36,6 @@ def _finite(value) -> bool:
 
 
 def _setup_91_state(df: pd.DataFrame, ema9: pd.Series, side: str) -> dict:
-    """
-    Detecta o Setup 9.1 clássico.
-
-    Compra:
-    - MME9 vinha caindo;
-    - vira para cima em candle fechado (candle-gatilho);
-    - enquanto a MME9 continuar subindo, o gatilho permanece válido;
-    - entrada no rompimento da máxima do candle-gatilho;
-    - stop na mínima do candle-gatilho.
-
-    Venda é a lógica espelhada.
-    """
     if len(df) < 3 or len(ema9) < 3:
         return {"passed": False, "status": "sem dados suficientes"}
 
@@ -72,6 +67,7 @@ def _setup_91_state(df: pd.DataFrame, ema9: pd.Series, side: str) -> dict:
             if _finite(df["High"].iloc[j]) and float(df["High"].iloc[j]) > trigger_high
         ]
         direction = "Compra"
+        name = "Setup 9.1 Compra"
     else:
         entry = trigger_low
         stop = trigger_high
@@ -80,17 +76,36 @@ def _setup_91_state(df: pd.DataFrame, ema9: pd.Series, side: str) -> dict:
             if _finite(df["Low"].iloc[j]) and float(df["Low"].iloc[j]) < trigger_low
         ]
         direction = "Venda"
+        name = "Setup 9.1 Venda"
 
     first_break = breaks[0] if breaks else None
 
     validation_end = first_break if first_break is not None else len(ema9)
     for j in range(trigger_idx + 1, validation_end):
         if not (_finite(ema9.iloc[j - 1]) and _finite(ema9.iloc[j])):
-            return {"passed": False, "status": "sem dados suficientes"}
+            return {"passed": False, "status": "sem dados suficientes", "name": name}
         if side == "buy" and ema9.iloc[j] <= ema9.iloc[j - 1]:
-            return {"passed": False, "status": "MME9 deixou de apontar para cima antes da entrada"}
+            return {
+                "passed": False,
+                "status": "MME9 deixou de apontar para cima antes da entrada",
+                "name": name,
+                "direction": direction,
+                "trigger_date": trigger_date,
+                "signal_date": trigger_date,
+                "entry": entry,
+                "stop": stop,
+            }
         if side == "sell" and ema9.iloc[j] >= ema9.iloc[j - 1]:
-            return {"passed": False, "status": "MME9 deixou de apontar para baixo antes da entrada"}
+            return {
+                "passed": False,
+                "status": "MME9 deixou de apontar para baixo antes da entrada",
+                "name": name,
+                "direction": direction,
+                "trigger_date": trigger_date,
+                "signal_date": trigger_date,
+                "entry": entry,
+                "stop": stop,
+            }
 
     if trigger_idx == len(df) - 1:
         status = "Candle-gatilho formado"
@@ -107,15 +122,28 @@ def _setup_91_state(df: pd.DataFrame, ema9: pd.Series, side: str) -> dict:
 
     return {
         "passed": passed,
+        "name": name,
         "status": status,
         "direction": direction,
         "trigger_idx": trigger_idx,
         "trigger_date": trigger_date,
+        "signal_date": trigger_date,
         "entry": entry,
         "stop": stop,
         "trigger_high": trigger_high,
         "trigger_low": trigger_low,
     }
+
+
+def _special_state(df: pd.DataFrame, cache: dict, rule: dict) -> dict | None:
+    op = rule.get("operator")
+    left = _series_for(cache, rule["left"])
+    if op in {"setup_91_buy", "setup_91_sell"}:
+        side = "buy" if op == "setup_91_buy" else "sell"
+        return _setup_91_state(df, left, side)
+    if op in SPECIAL_SETUP_OPS:
+        return special_setup_state(df, op, left)
+    return None
 
 
 def evaluate_rule(df: pd.DataFrame, cache: dict, rule: dict) -> tuple[bool, str]:
@@ -126,13 +154,11 @@ def evaluate_rule(df: pd.DataFrame, cache: dict, rule: dict) -> tuple[bool, str]
     if not _finite(left_now):
         return False, "sem dados suficientes"
 
-    if op in {"setup_91_buy", "setup_91_sell"}:
-        side = "buy" if op == "setup_91_buy" else "sell"
-        state = _setup_91_state(df, left, side)
-        direction = state.get("direction", "Compra" if side == "buy" else "Venda")
+    state = _special_state(df, cache, rule)
+    if state is not None:
+        name = state.get("name", "Setup especial")
         status = state.get("status", "estado indisponível")
-        label = f"Setup 9.1 {direction}: {status}"
-        return bool(state.get("passed", False)), label
+        return bool(state.get("passed", False)), f"{name}: {status}"
 
     if op in {"rising", "falling"}:
         if len(left) < 2 or not _finite(left.iloc[-2]):
@@ -183,7 +209,6 @@ def combine_results(values: list[bool], connectors: list[str]) -> bool:
 
 
 def describe_strategy(rules: list[dict]) -> str:
-    """Descrição segura para regras genéricas e presets especiais."""
     parts = []
     op_labels = {
         "<": "<",
@@ -204,6 +229,8 @@ def describe_strategy(rules: list[dict]) -> str:
             expr = "Setup 9.1 clássico — Compra: MME9 vinha caindo e virou para cima; entrada no rompimento da máxima do candle-gatilho"
         elif op == "setup_91_sell":
             expr = "Setup 9.1 clássico — Venda: MME9 vinha subindo e virou para baixo; entrada no rompimento da mínima do candle-gatilho"
+        elif op in SPECIAL_SETUP_OPS:
+            expr = special_setup_description(op)
         else:
             left = indicator_label(rule["left"])
             op_text = op_labels.get(op, op or "operador desconhecido")
@@ -225,7 +252,12 @@ def describe_strategy(rules: list[dict]) -> str:
     return " ".join(parts)
 
 
-def evaluate_latest(ticker: str, df: pd.DataFrame, rules: list[dict]) -> dict:
+def evaluate_latest(
+    ticker: str,
+    df: pd.DataFrame,
+    rules: list[dict],
+    context_filters: list[str] | None = None,
+) -> dict:
     specs = []
     for rule in rules:
         specs.append(rule["left"])
@@ -245,25 +277,39 @@ def evaluate_latest(ticker: str, df: pd.DataFrame, rules: list[dict]) -> dict:
         if idx > 0:
             connectors.append(rule.get("connector", "AND"))
 
-        if rule["operator"] in {"setup_91_buy", "setup_91_sell"}:
-            side = "buy" if rule["operator"] == "setup_91_buy" else "sell"
-            setup_state = _setup_91_state(df, _series_for(cache, rule["left"]), side)
+        state = _special_state(df, cache, rule)
+        if state is not None:
+            setup_state = state
 
-    passed = combine_results(checks, connectors)
+    strategy_passed = combine_results(checks, connectors)
+    context_passed, context_details = evaluate_context_filters(df, context_filters)
+    passed = bool(strategy_passed and context_passed)
+
     row = {
         "Ticker": ticker,
         "Fechamento": round(float(df["Close"].iloc[-1]), 2),
         "Data": df.index[-1].strftime("%d/%m/%Y"),
         "Passou": passed,
+        "Estratégia OK": bool(strategy_passed),
+        "Contexto OK": bool(context_passed),
         "Regras aprovadas": f"{sum(checks)}/{len(checks)}",
         "Detalhes": " | ".join(rule_details),
+        "Filtros de contexto": " | ".join(context_details) if context_details else "Nenhum",
     }
 
-    if setup_state and "entry" in setup_state:
-        row["Status 9.1"] = setup_state["status"]
-        row["Candle-gatilho"] = setup_state["trigger_date"].strftime("%d/%m/%Y")
-        row["Entrada / gatilho"] = round(float(setup_state["entry"]), 2)
-        row["Stop"] = round(float(setup_state["stop"]), 2)
+    if setup_state:
+        row["Setup"] = setup_state.get("name", "Setup especial")
+        row["Status setup"] = setup_state.get("status", "")
+        signal_date = setup_state.get("signal_date")
+        trigger_date = setup_state.get("trigger_date")
+        if signal_date is not None:
+            row["Candle-sinal"] = signal_date.strftime("%d/%m/%Y")
+        if trigger_date is not None and trigger_date is not signal_date:
+            row["Candle-gatilho"] = trigger_date.strftime("%d/%m/%Y")
+        if setup_state.get("entry") is not None:
+            row["Entrada / gatilho"] = round(float(setup_state["entry"]), 2)
+        if setup_state.get("stop") is not None:
+            row["Stop"] = round(float(setup_state["stop"]), 2)
 
     for rule in rules:
         label = indicator_label(rule["left"])
@@ -273,7 +319,14 @@ def evaluate_latest(ticker: str, df: pd.DataFrame, rules: list[dict]) -> dict:
     return row
 
 
-def scan_universe(tickers, provider, timeframe, period, rules):
+def scan_universe(
+    tickers,
+    provider,
+    timeframe,
+    period,
+    rules,
+    context_filters: list[str] | None = None,
+):
     rows = []
     errors = {}
     histories = None
@@ -300,7 +353,7 @@ def scan_universe(tickers, provider, timeframe, period, rules):
             tf = resample_ohlcv(raw, timeframe)
             if len(tf) < 3:
                 raise ValueError("Histórico insuficiente para cálculo.")
-            rows.append(evaluate_latest(ticker, tf, rules))
+            rows.append(evaluate_latest(ticker, tf, rules, context_filters=context_filters))
             errors.pop(ticker, None)
         except Exception as exc:
             errors[ticker] = str(exc)
