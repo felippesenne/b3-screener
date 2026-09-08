@@ -1,3 +1,6 @@
+from datetime import datetime, time, timedelta
+from zoneinfo import ZoneInfo
+
 import streamlit as st
 
 from bdr_universe import BDRS
@@ -8,6 +11,10 @@ from universes import FAVORITE_23, IBOVESPA, fetch_all_b3_tickers, universe_text
 from strategy_images import get_preset_image_path
 
 st.set_page_config(page_title="B3 Strategy Builder", page_icon="📈", layout="wide")
+
+MARKET_TZ = ZoneInfo("America/Sao_Paulo")
+MARKET_CLOSE_CUTOFF = time(18, 30)
+MARKET_REFERENCE_TICKER = "PETR4"
 
 INDICATORS = [
     "Preço", "IFR (RSI)", "MME (EMA)", "MMS (SMA)", "MACD",
@@ -46,6 +53,77 @@ PRESETS = [
 ]
 
 _EDITOR_OCCURRENCES = {}
+
+
+def _previous_weekday(day):
+    candidate = day - timedelta(days=1)
+    while candidate.weekday() >= 5:
+        candidate -= timedelta(days=1)
+    return candidate
+
+
+def _expected_latest_closed_session(now: datetime):
+    if now.weekday() >= 5:
+        candidate = now.date()
+        while candidate.weekday() >= 5:
+            candidate -= timedelta(days=1)
+        return candidate
+
+    if now.time() < MARKET_CLOSE_CUTOFF:
+        return _previous_weekday(now.date())
+
+    return now.date()
+
+
+@st.cache_data(ttl=5 * 60, show_spinner=False)
+def market_data_snapshot() -> dict:
+    provider = YahooFinanceProvider()
+    history = provider.get_history(MARKET_REFERENCE_TICKER, period="1mo")
+    latest_date = history.index.max().date()
+    checked_at = datetime.now(MARKET_TZ)
+    expected_date = _expected_latest_closed_session(checked_at)
+    return {
+        "latest_date": latest_date,
+        "expected_date": expected_date,
+        "checked_at": checked_at,
+        "is_current": latest_date >= expected_date,
+    }
+
+
+def render_market_data_status(compact: bool = False) -> None:
+    try:
+        snapshot = market_data_snapshot()
+    except Exception as exc:
+        if compact:
+            st.caption(f"Não foi possível verificar o último pregão disponível agora: {exc}")
+        else:
+            st.warning("Não foi possível verificar agora a data do último pregão disponível no Yahoo Finance.")
+        return
+
+    latest = snapshot["latest_date"].strftime("%d/%m/%Y")
+    expected = snapshot["expected_date"].strftime("%d/%m/%Y")
+    checked = snapshot["checked_at"].strftime("%H:%M")
+
+    if compact:
+        status = "atualizado" if snapshot["is_current"] else f"aguardando referência de {expected}"
+        st.caption(
+            f"Último pregão diário disponível para análise: **{latest}** · {status} · "
+            f"referência {MARKET_REFERENCE_TICKER} · verificado às {checked} BRT."
+        )
+        return
+
+    st.subheader("Atualização dos dados")
+    if snapshot["is_current"]:
+        st.success(f"Último pregão diário disponível para análise: {latest}")
+    else:
+        st.warning(
+            f"Último pregão diário disponível para análise: {latest}. "
+            f"A referência esperada após o fechamento é {expected}; o Yahoo Finance pode ainda estar atualizando."
+        )
+    st.caption(
+        f"Referência: {MARKET_REFERENCE_TICKER} · Yahoo Finance · verificado às {checked} BRT. "
+        "O status é estimado por dias úteis e horário de fechamento; feriados e sessões especiais da B3 podem alterar a referência."
+    )
 
 
 @st.cache_data(ttl=24 * 60 * 60, show_spinner=False)
@@ -325,6 +403,7 @@ st.code(describe_strategy(rules), language=None)
 if context_filters:
     st.markdown(f"**Filtro de contexto:** {describe_context_filters(context_filters)}")
 
+render_market_data_status()
 run = st.button("Rodar screener", type="primary", use_container_width=True)
 
 if run:
@@ -379,4 +458,5 @@ if run:
                 st.write(f"**{ticker}:** {msg}")
 
 st.divider()
+render_market_data_status(compact=True)
 st.caption("Dados de preço: Yahoo Finance via yfinance. O screener consulta o histórico disponível a cada execução.")
