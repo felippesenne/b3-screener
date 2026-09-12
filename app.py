@@ -7,8 +7,8 @@ from bdr_universe import BDRS
 from classic_setups import CONTEXT_FILTERS, describe_context_filters
 from data_provider import YahooFinanceProvider
 from scanner import describe_strategy, scan_universe
-from universes import FAVORITE_23, IBOVESPA, fetch_all_b3_tickers, universe_text
 from strategy_images import get_preset_image_path
+from universes import FAVORITE_23, IBOVESPA, fetch_all_b3_tickers, universe_text
 
 st.set_page_config(page_title="B3 Strategy Builder", page_icon="📈", layout="wide")
 
@@ -32,31 +32,18 @@ OPERATORS = {
     "Descendente": "falling",
 }
 
+# Menu deliberadamente enxuto: somente as famílias que queremos priorizar.
 PRESETS = [
     "Strategy Builder",
-    "Stormer — PFR Compra",
-    "Stormer — PFR Venda",
-    "Stormer — Setup 123 Compra",
-    "Stormer — Setup 123 Venda",
-    "Stormer — IFR2 clássico",
-    "Stormer — Éden dos Traders Compra",
-    "Stormer — Éden dos Traders Venda",
+    "IFR2 — Retorno à média em tendência de alta",
     "Larry Williams — Setup 9.1 Compra",
     "Larry Williams — Setup 9.1 Venda",
     "Larry Williams — Setup 9.2 Compra",
     "Larry Williams — Setup 9.2 Venda",
-    "Larry Williams — Setup 9.3 Compra",
-    "Larry Williams — Setup 9.3 Venda",
-    "Larry Williams — Setup 9.4 O Susto Compra",
     "Dave Landry — Compra",
     "Dave Landry — Venda",
-    "Price Action — Inside Bar",
     "Price Action — Pivô de Alta / Saída de Consolidação",
     "Price Action — Pivô de Baixa / Saída de Consolidação",
-    "Trade de Valor — RAPF Compra",
-    "Trade de Valor — RAPF Venda",
-    "Retorno à média — IFR2 < 25 + MME50 ascendente",
-    "MME9 / MME80 ascendentes",
 ]
 
 _EDITOR_OCCURRENCES = {}
@@ -204,56 +191,70 @@ def indicator_editor(prefix: str, default_type="IFR (RSI)") -> dict:
     return {"kind": "VOLUME", "period": int(period), "output": output}
 
 
+def _trend_rules(side: str) -> list[dict]:
+    if side == "buy":
+        return [
+            {"connector": "AND", "left": {"kind": "EMA", "period": 21}, "operator": "rising"},
+            {"connector": "AND", "left": {"kind": "EMA", "period": 50}, "operator": "rising"},
+            {
+                "connector": "AND",
+                "left": {"kind": "EMA", "period": 21},
+                "operator": ">",
+                "right_kind": "indicator",
+                "right": {"kind": "EMA", "period": 50},
+            },
+        ]
+    return [
+        {"connector": "AND", "left": {"kind": "EMA", "period": 21}, "operator": "falling"},
+        {"connector": "AND", "left": {"kind": "EMA", "period": 50}, "operator": "falling"},
+        {
+            "connector": "AND",
+            "left": {"kind": "EMA", "period": 21},
+            "operator": "<",
+            "right_kind": "indicator",
+            "right": {"kind": "EMA", "period": 50},
+        },
+    ]
+
+
 def preset_rules(name: str):
     price = {"kind": "PRICE", "field": "Close"}
     ema9 = {"kind": "EMA", "period": 9}
 
-    if name == "Stormer — PFR Compra": return [{"left": price, "operator": "pfr_buy"}]
-    if name == "Stormer — PFR Venda": return [{"left": price, "operator": "pfr_sell"}]
-    if name == "Stormer — Setup 123 Compra": return [{"left": price, "operator": "setup_123_buy"}]
-    if name == "Stormer — Setup 123 Venda": return [{"left": price, "operator": "setup_123_sell"}]
-    if name == "Stormer — IFR2 clássico": return [{"left": {"kind": "RSI", "period": 2}, "operator": "ifr2_stormer"}]
-    if name == "Stormer — Éden dos Traders Compra":
+    if name == "IFR2 — Retorno à média em tendência de alta":
         return [
-            {"left": {"kind": "EMA", "period": 8}, "operator": "rising"},
-            {"connector": "AND", "left": {"kind": "EMA", "period": 80}, "operator": "rising"},
-            {"connector": "AND", "left": {"kind": "EMA", "period": 8}, "operator": ">", "right_kind": "indicator", "right": {"kind": "EMA", "period": 80}},
-        ]
-    if name == "Stormer — Éden dos Traders Venda":
-        return [
-            {"left": {"kind": "EMA", "period": 8}, "operator": "falling"},
-            {"connector": "AND", "left": {"kind": "EMA", "period": 80}, "operator": "falling"},
-            {"connector": "AND", "left": {"kind": "EMA", "period": 8}, "operator": "<", "right_kind": "indicator", "right": {"kind": "EMA", "period": 80}},
-        ]
-    if name == "Larry Williams — Setup 9.1 Compra": return [{"left": ema9, "operator": "setup_91_buy"}]
-    if name == "Larry Williams — Setup 9.1 Venda": return [{"left": ema9, "operator": "setup_91_sell"}]
-    if name == "Larry Williams — Setup 9.2 Compra": return [{"left": ema9, "operator": "setup_92_buy"}]
-    if name == "Larry Williams — Setup 9.2 Venda": return [{"left": ema9, "operator": "setup_92_sell"}]
-    if name == "Larry Williams — Setup 9.3 Compra": return [{"left": ema9, "operator": "setup_93_buy"}]
-    if name == "Larry Williams — Setup 9.3 Venda": return [{"left": ema9, "operator": "setup_93_sell"}]
-    if name == "Larry Williams — Setup 9.4 O Susto Compra": return [{"left": price, "operator": "setup_94_buy"}]
-    if name == "Dave Landry — Compra": return [{"left": price, "operator": "landry_buy"}]
-    if name == "Dave Landry — Venda": return [{"left": price, "operator": "landry_sell"}]
-    if name == "Price Action — Inside Bar": return [{"left": price, "operator": "inside_bar"}]
-    if name == "Price Action — Pivô de Alta / Saída de Consolidação": return [{"left": price, "operator": "pivot_breakout_buy"}]
-    if name == "Price Action — Pivô de Baixa / Saída de Consolidação": return [{"left": price, "operator": "pivot_breakout_sell"}]
-    if name == "Trade de Valor — RAPF Compra": return [{"left": price, "operator": "rapf_buy"}]
-    if name == "Trade de Valor — RAPF Venda": return [{"left": price, "operator": "rapf_sell"}]
-    if name == "Retorno à média — IFR2 < 25 + MME50 ascendente":
-        return [
-            {"left": {"kind": "RSI", "period": 2}, "operator": "<", "right_kind": "value", "right_value": 25.0},
+            {"left": {"kind": "RSI", "period": 2}, "operator": "<", "right_kind": "value", "right_value": 5.0},
             {"connector": "AND", "left": {"kind": "EMA", "period": 50}, "operator": "rising"},
+            {
+                "connector": "AND",
+                "left": price,
+                "operator": ">",
+                "right_kind": "indicator",
+                "right": {"kind": "EMA", "period": 50},
+            },
         ]
-    if name == "MME9 / MME80 ascendentes":
-        return [
-            {"left": {"kind": "EMA", "period": 9}, "operator": "rising"},
-            {"connector": "AND", "left": {"kind": "EMA", "period": 80}, "operator": "rising"},
-        ]
+
+    if name == "Larry Williams — Setup 9.1 Compra":
+        return [{"left": ema9, "operator": "setup_91_buy"}, *_trend_rules("buy")]
+    if name == "Larry Williams — Setup 9.1 Venda":
+        return [{"left": ema9, "operator": "setup_91_sell"}, *_trend_rules("sell")]
+    if name == "Larry Williams — Setup 9.2 Compra":
+        return [{"left": ema9, "operator": "setup_92_buy"}, *_trend_rules("buy")]
+    if name == "Larry Williams — Setup 9.2 Venda":
+        return [{"left": ema9, "operator": "setup_92_sell"}, *_trend_rules("sell")]
+    if name == "Dave Landry — Compra":
+        return [{"left": price, "operator": "landry_buy"}]
+    if name == "Dave Landry — Venda":
+        return [{"left": price, "operator": "landry_sell"}]
+    if name == "Price Action — Pivô de Alta / Saída de Consolidação":
+        return [{"left": price, "operator": "pivot_breakout_buy"}]
+    if name == "Price Action — Pivô de Baixa / Saída de Consolidação":
+        return [{"left": price, "operator": "pivot_breakout_sell"}]
     return None
 
 
 st.title("B3 Strategy Builder")
-st.caption("Monte scanners técnicos combinando indicadores, parâmetros, comparações e cruzamentos sem alterar código.")
+st.caption("Scanners técnicos focados em tendência/pullback, retorno à média e rompimentos, com Strategy Builder para testes personalizados.")
 
 with st.sidebar:
     st.header("Universo")
@@ -291,7 +292,12 @@ with st.sidebar:
         if "ticker_text" not in st.session_state:
             st.session_state["ticker_text"] = universe_text(IBOVESPA)
 
-    ticker_text = st.text_area("Tickers", height=420, key="ticker_text", help="Você pode editar a lista manualmente depois de carregar qualquer universo.")
+    ticker_text = st.text_area(
+        "Tickers",
+        height=420,
+        key="ticker_text",
+        help="Você pode editar a lista manualmente depois de carregar qualquer universo.",
+    )
     timeframe = st.selectbox("Timeframe", ["Diário", "Semanal", "Mensal"])
     history_period = st.selectbox("Histórico", ["6mo", "1y", "2y", "5y", "10y"], index=2)
 
@@ -299,8 +305,10 @@ with st.sidebar:
     st.subheader("Estratégia")
     preset = st.selectbox("Atalho / preset", PRESETS)
     context_filters = st.multiselect(
-        "Filtros de contexto (opcionais)", CONTEXT_FILTERS, default=[],
-        help="Os filtros são independentes da estratégia e são combinados por AND. Ex.: PFR Compra + Éden dos Traders Compra.",
+        "Filtros de contexto (opcionais)",
+        CONTEXT_FILTERS,
+        default=[],
+        help="Os filtros são independentes da estratégia e combinados por AND. Use-os para exigir contexto adicional sem criar novos presets.",
     )
     if context_filters:
         st.caption(f"Contexto: {describe_context_filters(context_filters)}")
@@ -316,7 +324,12 @@ if rules is None:
     for i in range(int(rule_count)):
         with st.expander(f"Condição {i + 1}", expanded=True):
             if i > 0:
-                connector = st.radio("Conector com a condição anterior", ["AND", "OR"], horizontal=True, key=f"rule_{i}_connector")
+                connector = st.radio(
+                    "Conector com a condição anterior",
+                    ["AND", "OR"],
+                    horizontal=True,
+                    key=f"rule_{i}_connector",
+                )
             else:
                 connector = None
 
@@ -329,7 +342,11 @@ if rules is None:
                 rule["connector"] = connector
 
             if op not in {"rising", "falling"}:
-                compare_with = st.selectbox("Comparar com", ["Valor fixo", "Preço de fechamento", "Outro indicador"], key=f"rule_{i}_right_kind")
+                compare_with = st.selectbox(
+                    "Comparar com",
+                    ["Valor fixo", "Preço de fechamento", "Outro indicador"],
+                    key=f"rule_{i}_right_kind",
+                )
                 if compare_with == "Valor fixo":
                     value = st.number_input("Valor", value=0.0, step=0.1, format="%.4f", key=f"rule_{i}_value")
                     rule.update({"right_kind": "value", "right_value": float(value)})
@@ -366,7 +383,14 @@ if run:
 
     provider = YahooFinanceProvider()
     with st.spinner(f"Analisando {len(tickers)} ativos..."):
-        result, errors = scan_universe(tickers, provider, timeframe, history_period, rules, context_filters=context_filters)
+        result, errors = scan_universe(
+            tickers,
+            provider,
+            timeframe,
+            history_period,
+            rules,
+            context_filters=context_filters,
+        )
 
     if result.empty:
         st.warning("Nenhum ativo pôde ser analisado.")
