@@ -1,40 +1,36 @@
 from data_provider import YahooFinanceProvider
 from scanner import scan_universe
-from universes import IBOVESPA
+from universes import FAVORITE_23
 
 
 def rules_for(op):
     return [{"left": {"kind": "PRICE", "field": "Close"}, "operator": op}]
 
 
-def run(op, timeframe="Diário", period="2y"):
+def run(op):
     provider = YahooFinanceProvider()
     result, errors = scan_universe(
-        IBOVESPA,
+        FAVORITE_23,
         provider,
-        timeframe,
-        period,
+        "Diário",
+        "2y",
         rules_for(op),
         context_filters=[],
     )
-    print("\n===", op, timeframe, period, "===")
+    print("\n===", op, "Diário 2y / FAVORITE_23", "===")
     print("analisados:", len(result), "erros:", len(errors))
     if result.empty:
         print("RESULTADO VAZIO")
         return
     print("selecionados:", int(result["Passou"].sum()))
     cols = [c for c in ["Ticker", "Passou", "Status setup", "Entrada / gatilho", "Stop", "Detalhes"] if c in result.columns]
-    print(result[cols].head(30).to_string(index=False))
-    print("\nSTATUS MAIS COMUNS:")
-    if "Status setup" in result.columns:
-        print(result["Status setup"].fillna("<sem status>").value_counts().head(20).to_string())
+    print(result[cols].to_string(index=False))
     if errors:
         print("\nERROS:")
-        for ticker, msg in list(errors.items())[:20]:
+        for ticker, msg in errors.items():
             print(ticker, msg)
 
 
 if __name__ == "__main__":
-    for op in ["simple_pivot_buy", "simple_pivot_sell"]:
-        for tf in ["Diário", "Semanal", "Mensal"]:
-            run(op, timeframe=tf, period="2y")
+    run("simple_pivot_buy")
+    run("simple_pivot_sell")
