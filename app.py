@@ -42,6 +42,8 @@ PRESETS = [
     "Larry Williams — Setup 9.2 Venda",
     "Dave Landry — Compra",
     "Dave Landry — Venda",
+    "Price Action — Pivô de Alta Simples",
+    "Price Action — Pivô de Baixa Simples",
     "Price Action — Pivô de Alta / Saída de Consolidação",
     "Price Action — Pivô de Baixa / Saída de Consolidação",
 ]
@@ -246,6 +248,10 @@ def preset_rules(name: str):
         return [{"left": price, "operator": "landry_buy"}]
     if name == "Dave Landry — Venda":
         return [{"left": price, "operator": "landry_sell"}]
+    if name == "Price Action — Pivô de Alta Simples":
+        return [{"left": price, "operator": "simple_pivot_buy"}]
+    if name == "Price Action — Pivô de Baixa Simples":
+        return [{"left": price, "operator": "simple_pivot_sell"}]
     if name == "Price Action — Pivô de Alta / Saída de Consolidação":
         return [{"left": price, "operator": "pivot_breakout_buy"}]
     if name == "Price Action — Pivô de Baixa / Saída de Consolidação":
