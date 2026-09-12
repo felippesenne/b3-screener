@@ -5,6 +5,11 @@ import math
 import pandas as pd
 
 from indicators import ema
+from structure_setups import (
+    STRUCTURE_SETUP_OPS,
+    structure_setup_description,
+    structure_setup_state,
+)
 from trade_de_valor_setups import (
     TRADE_DE_VALOR_SETUP_OPS,
     trade_de_valor_setup_description,
@@ -16,7 +21,7 @@ SPECIAL_SETUP_OPS = {
     "pfr_buy", "pfr_sell", "setup_123_buy", "setup_123_sell",
     "setup_92_buy", "setup_92_sell", "setup_93_buy", "setup_93_sell",
     "ifr2_stormer", "inside_bar",
-} | TRADE_DE_VALOR_SETUP_OPS
+} | TRADE_DE_VALOR_SETUP_OPS | STRUCTURE_SETUP_OPS
 
 SPECIAL_SETUP_DESCRIPTIONS = {
     "pfr_buy": "Stormer — PFR Compra: mínima inferior às duas anteriores e fechamento acima do fechamento anterior; gatilho no rompimento da máxima do candle-sinal",
@@ -223,12 +228,15 @@ def special_setup_state(df: pd.DataFrame, op: str, left: pd.Series) -> dict:
     if op == "ifr2_stormer": return _ifr2_stormer_state(df, left)
     if op == "inside_bar": return _inside_bar_state(df)
     if op in TRADE_DE_VALOR_SETUP_OPS: return trade_de_valor_setup_state(df, op)
+    if op in STRUCTURE_SETUP_OPS: return structure_setup_state(df, op)
     raise ValueError(f"Setup especial não suportado: {op}")
 
 
 def special_setup_description(op: str) -> str:
     if op in TRADE_DE_VALOR_SETUP_OPS:
         return trade_de_valor_setup_description(op)
+    if op in STRUCTURE_SETUP_OPS:
+        return structure_setup_description(op)
     return SPECIAL_SETUP_DESCRIPTIONS.get(op, op)
 
 
