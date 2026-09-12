@@ -7,7 +7,6 @@ import pandas as pd
 from indicators import ema
 
 
-# Mantemos expostos somente os setups que permanecem no menu curado.
 TRADE_DE_VALOR_SETUP_OPS = {
     "landry_buy",
     "landry_sell",
@@ -27,13 +26,13 @@ TRADE_DE_VALOR_SETUP_DESCRIPTIONS = {
         "e tocando/chegando até 1% da MME21; gatilho na mínima e stop R$0,01 acima da máxima."
     ),
     "simple_pivot_buy": (
-        "Pivô de Alta Simples: fundo anterior, topo intermediário e novo fundo mais alto; "
-        "o setup arma no fundo mais alto e o gatilho é a superação do topo intermediário. "
+        "Pivô de Alta Simples: fundo anterior, topo intermediário e novo fundo mais alto. "
+        "O setup aparece enquanto estiver armado e também por até 5 candles após a confirmação pelo rompimento do topo. "
         "Stop estrutural no fundo mais alto. Não exige consolidação, volume ou médias móveis."
     ),
     "simple_pivot_sell": (
-        "Pivô de Baixa Simples: topo anterior, fundo intermediário e novo topo mais baixo; "
-        "o setup arma no topo mais baixo e o gatilho é a perda do fundo intermediário. "
+        "Pivô de Baixa Simples: topo anterior, fundo intermediário e novo topo mais baixo. "
+        "O setup aparece enquanto estiver armado e também por até 5 candles após a confirmação pela perda do fundo. "
         "Stop estrutural no topo mais baixo. Não exige consolidação, volume ou médias móveis."
     ),
     "pivot_breakout_buy": (
@@ -141,11 +140,6 @@ def _signal_or_next_bar_state(
 
 
 def _landry_signal(df: pd.DataFrame, i: int, side: str, proximity_pct: float = 0.01) -> bool:
-    """Landry objetivo: tendência da MME21 + extremo de 3 barras + proximidade da MME21.
-
-    A proximidade aceita candle cujo range intercepte uma faixa de +/-1% ao redor da MME21.
-    Isso evita marcar extremos distantes da média como se fossem o pullback do setup.
-    """
     if i < 2:
         return False
 
@@ -186,10 +180,11 @@ def _landry_state(df: pd.DataFrame, side: str) -> dict:
         )
 
     signal_idx = max(candidates)
-    if side == "buy":
-        stop = float(df["Low"].iloc[signal_idx]) - 0.01
-    else:
-        stop = float(df["High"].iloc[signal_idx]) + 0.01
+    stop = (
+        float(df["Low"].iloc[signal_idx]) - 0.01
+        if side == "buy"
+        else float(df["High"].iloc[signal_idx]) + 0.01
+    )
 
     return _signal_or_next_bar_state(
         df,
@@ -202,44 +197,52 @@ def _landry_state(df: pd.DataFrame, side: str) -> dict:
 
 
 def _is_swing_low(df: pd.DataFrame, i: int, strength: int = 1) -> bool:
+    """Fundo local confirmado, aceitando empate com um dos vizinhos.
+
+    Exige que a mínima seja menor ou igual às mínimas da vizinhança e estritamente
+    menor que pelo menos um lado. Isso reconhece fundos duplos sem transformar uma
+    sequência totalmente plana em vários swings.
+    """
     if i < strength or i + strength >= len(df):
         return False
     value = float(df["Low"].iloc[i])
-    left = df["Low"].iloc[i - strength:i].astype(float)
-    right = df["Low"].iloc[i + 1:i + strength + 1].astype(float)
-    return bool(value < float(left.min()) and value < float(right.min()))
+    left_min = float(df["Low"].iloc[i - strength:i].astype(float).min())
+    right_min = float(df["Low"].iloc[i + 1:i + strength + 1].astype(float).min())
+    return bool(value <= left_min and value <= right_min and (value < left_min or value < right_min))
 
 
 def _is_swing_high(df: pd.DataFrame, i: int, strength: int = 1) -> bool:
+    """Topo local confirmado, aceitando empate com um dos vizinhos."""
     if i < strength or i + strength >= len(df):
         return False
     value = float(df["High"].iloc[i])
-    left = df["High"].iloc[i - strength:i].astype(float)
-    right = df["High"].iloc[i + 1:i + strength + 1].astype(float)
-    return bool(value > float(left.max()) and value > float(right.max()))
+    left_max = float(df["High"].iloc[i - strength:i].astype(float).max())
+    right_max = float(df["High"].iloc[i + 1:i + strength + 1].astype(float).max())
+    return bool(value >= left_max and value >= right_max and (value > left_max or value > right_max))
 
 
-def _simple_pivot_structure(
+def _simple_pivot_candidates(
     df: pd.DataFrame,
     side: str,
     strength: int = 1,
-    lookback: int = 80,
-) -> dict | None:
-    """Encontra a estrutura clássica de pivô sem exigir consolidação.
+    lookback: int = 120,
+) -> list[dict]:
+    """Retorna estruturas clássicas de pivô ordenadas cronologicamente.
 
     Compra: fundo 1 -> topo intermediário -> fundo 2 mais alto.
     Venda: topo 1 -> fundo intermediário -> topo 2 mais baixo.
     """
     if len(df) < 7:
-        return None
+        return []
 
     start = max(strength, len(df) - lookback)
     end = len(df) - strength
     lows = [i for i in range(start, end) if _is_swing_low(df, i, strength)]
     highs = [i for i in range(start, end) if _is_swing_high(df, i, strength)]
+    candidates: list[dict] = []
 
     if side == "buy":
-        for low2_idx in reversed(lows):
+        for low2_idx in lows:
             prior_highs = [i for i in highs if i < low2_idx]
             if not prior_highs:
                 continue
@@ -252,15 +255,20 @@ def _simple_pivot_structure(
             low2 = float(df["Low"].iloc[low2_idx])
             if low2 <= low1:
                 continue
-            return {
-                "first_idx": low1_idx,
-                "trigger_idx": high1_idx,
-                "second_idx": low2_idx,
-                "entry": float(df["High"].iloc[high1_idx]),
-                "stop": low2,
-            }
+            candidates.append(
+                {
+                    "first_idx": low1_idx,
+                    "trigger_idx": high1_idx,
+                    "second_idx": low2_idx,
+                    "first": low1,
+                    "trigger": float(df["High"].iloc[high1_idx]),
+                    "second": low2,
+                    "entry": float(df["High"].iloc[high1_idx]),
+                    "stop": low2,
+                }
+            )
     else:
-        for high2_idx in reversed(highs):
+        for high2_idx in highs:
             prior_lows = [i for i in lows if i < high2_idx]
             if not prior_lows:
                 continue
@@ -273,98 +281,177 @@ def _simple_pivot_structure(
             high2 = float(df["High"].iloc[high2_idx])
             if high2 >= high1:
                 continue
-            return {
-                "first_idx": high1_idx,
-                "trigger_idx": low1_idx,
-                "second_idx": high2_idx,
-                "entry": float(df["Low"].iloc[low1_idx]),
-                "stop": high2,
-            }
+            candidates.append(
+                {
+                    "first_idx": high1_idx,
+                    "trigger_idx": low1_idx,
+                    "second_idx": high2_idx,
+                    "first": high1,
+                    "trigger": float(df["Low"].iloc[low1_idx]),
+                    "second": high2,
+                    "entry": float(df["Low"].iloc[low1_idx]),
+                    "stop": high2,
+                }
+            )
 
-    return None
+    return candidates
 
 
-def _simple_pivot_state(df: pd.DataFrame, side: str, max_wait_bars: int = 10) -> dict:
+def _classify_simple_pivot_candidate(
+    df: pd.DataFrame,
+    structure: dict,
+    side: str,
+    confirmed_window: int,
+    armed_max_age: int,
+) -> tuple[int, int, dict] | None:
+    """Classifica um pivô como armado ou confirmado recentemente.
+
+    Retorna (índice do evento mais recente, prioridade, estado). Confirmados recebem
+    prioridade maior que armados quando o evento ocorreu no mesmo candle.
+    """
     name = "Pivô de Alta Simples" if side == "buy" else "Pivô de Baixa Simples"
     direction = "Compra" if side == "buy" else "Venda"
-    structure = _simple_pivot_structure(df, side)
-    if structure is None:
-        return _state(passed=False, name=name, status="sem estrutura de pivô recente", direction=direction)
-
     second_idx = int(structure["second_idx"])
     trigger_idx = int(structure["trigger_idx"])
     entry = float(structure["entry"])
     stop = float(structure["stop"])
     last = len(df) - 1
+    breakout_idx: int | None = None
 
-    if last - second_idx > max_wait_bars:
+    for j in range(second_idx + 1, len(df)):
+        high = float(df["High"].iloc[j])
+        low = float(df["Low"].iloc[j])
+        if side == "buy":
+            broke = high > entry
+            invalidated = low < stop
+        else:
+            broke = low < entry
+            invalidated = high > stop
+
+        if breakout_idx is None:
+            if broke and invalidated:
+                return None
+            if invalidated:
+                return None
+            if broke:
+                breakout_idx = j
+                continue
+        elif invalidated:
+            # Pivô chegou a confirmar, mas o stop estrutural foi perdido depois.
+            return None
+
+    signal_date = df.index[second_idx]
+    trigger_date = df.index[trigger_idx]
+
+    if breakout_idx is not None:
+        age = last - breakout_idx
+        if age > confirmed_window:
+            return None
+
+        close_now = float(df["Close"].iloc[-1])
+        distance_pct = (
+            (close_now / entry - 1.0) * 100.0
+            if side == "buy"
+            else (entry / close_now - 1.0) * 100.0
+        )
+        age_text = "no último candle" if age == 0 else f"há {age} candle{'s' if age != 1 else ''}"
+        structure_text = (
+            f"fundo1 {structure['first']:.2f} · topo/gatilho {entry:.2f} · fundo2/stop {stop:.2f}"
+            if side == "buy"
+            else f"topo1 {structure['first']:.2f} · fundo/gatilho {entry:.2f} · topo2/stop {stop:.2f}"
+        )
+        status = (
+            f"CONFIRMADO {age_text}; {structure_text}; "
+            f"fechamento atual {close_now:.2f} ({distance_pct:+.1f}% vs gatilho)"
+        )
+        return (
+            breakout_idx,
+            2,
+            _state(
+                passed=True,
+                name=name,
+                status=status,
+                direction=direction,
+                signal_date=signal_date,
+                trigger_date=trigger_date,
+                entry=entry,
+                stop=stop,
+            ),
+        )
+
+    setup_age = last - second_idx
+    if setup_age > armed_max_age:
+        return None
+
+    structure_text = (
+        f"fundo1 {structure['first']:.2f} · topo/gatilho {entry:.2f} · fundo2/stop {stop:.2f}"
+        if side == "buy"
+        else f"topo1 {structure['first']:.2f} · fundo/gatilho {entry:.2f} · topo2/stop {stop:.2f}"
+    )
+    status = (
+        f"ARMADO; {structure_text}; aguardando "
+        f"{'rompimento do topo' if side == 'buy' else 'perda do fundo'}"
+    )
+    return (
+        second_idx,
+        1,
+        _state(
+            passed=True,
+            name=name,
+            status=status,
+            direction=direction,
+            signal_date=signal_date,
+            trigger_date=trigger_date,
+            entry=entry,
+            stop=stop,
+        ),
+    )
+
+
+def _simple_pivot_state(
+    df: pd.DataFrame,
+    side: str,
+    confirmed_window: int = 5,
+    armed_max_age: int = 20,
+) -> dict:
+    """Seleciona pivôs armados ou confirmados recentemente.
+
+    - Estruturas confirmadas continuam aparecendo por até 5 candles após o rompimento.
+    - Estruturas ainda armadas podem permanecer por até 20 candles após o segundo swing.
+    - Se o stop estrutural for perdido antes ou depois do rompimento, a estrutura deixa de valer.
+    - Entre múltiplos pivôs, prevalece o evento relevante mais recente.
+    """
+    name = "Pivô de Alta Simples" if side == "buy" else "Pivô de Baixa Simples"
+    direction = "Compra" if side == "buy" else "Venda"
+    candidates = _simple_pivot_candidates(df, side)
+    if not candidates:
+        return _state(passed=False, name=name, status="sem estrutura de pivô recente", direction=direction)
+
+    classified = []
+    for structure in candidates:
+        item = _classify_simple_pivot_candidate(
+            df,
+            structure,
+            side,
+            confirmed_window=confirmed_window,
+            armed_max_age=armed_max_age,
+        )
+        if item is not None:
+            classified.append(item)
+
+    if not classified:
         return _state(
             passed=False,
             name=name,
-            status=f"estrutura de pivô com mais de {max_wait_bars} candles sem acionamento",
+            status=(
+                f"sem pivô armado nos últimos {armed_max_age} candles nem confirmação válida "
+                f"nos últimos {confirmed_window} candles"
+            ),
             direction=direction,
-            signal_date=df.index[second_idx],
-            trigger_date=df.index[trigger_idx],
-            entry=entry,
-            stop=stop,
         )
 
-    for j in range(second_idx + 1, len(df)):
-        if side == "buy":
-            broke = float(df["High"].iloc[j]) > entry
-            invalidated = float(df["Low"].iloc[j]) < stop
-        else:
-            broke = float(df["Low"].iloc[j]) < entry
-            invalidated = float(df["High"].iloc[j]) > stop
-
-        if broke and invalidated:
-            return _state(
-                passed=False,
-                name=name,
-                status="gatilho e stop foram atravessados no mesmo candle; sequência intraperíodo ambígua",
-                direction=direction,
-                signal_date=df.index[second_idx],
-                trigger_date=df.index[trigger_idx],
-                entry=entry,
-                stop=stop,
-            )
-        if invalidated:
-            return _state(
-                passed=False,
-                name=name,
-                status="estrutura invalidada antes do rompimento",
-                direction=direction,
-                signal_date=df.index[second_idx],
-                trigger_date=df.index[trigger_idx],
-                entry=entry,
-                stop=stop,
-            )
-        if broke:
-            return _state(
-                passed=j == last,
-                name=name,
-                status="Entrada acionada no último candle" if j == last else "Entrada já acionada anteriormente",
-                direction=direction,
-                signal_date=df.index[second_idx],
-                trigger_date=df.index[trigger_idx],
-                entry=entry,
-                stop=stop,
-            )
-
-    return _state(
-        passed=True,
-        name=name,
-        status=(
-            "Pivô de alta armado; aguardando rompimento do topo anterior"
-            if side == "buy"
-            else "Pivô de baixa armado; aguardando perda do fundo anterior"
-        ),
-        direction=direction,
-        signal_date=df.index[second_idx],
-        trigger_date=df.index[trigger_idx],
-        entry=entry,
-        stop=stop,
-    )
+    _, _, best_state = max(classified, key=lambda item: (item[0], item[1]))
+    return best_state
 
 
 def _pivot_signal(df: pd.DataFrame, i: int, side: str, lookback: int = 20) -> tuple[bool, dict]:
