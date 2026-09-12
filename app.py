@@ -47,7 +47,14 @@ PRESETS = [
     "Larry Williams — Setup 9.2 Venda",
     "Larry Williams — Setup 9.3 Compra",
     "Larry Williams — Setup 9.3 Venda",
+    "Larry Williams — Setup 9.4 O Susto Compra",
+    "Dave Landry — Compra",
+    "Dave Landry — Venda",
     "Price Action — Inside Bar",
+    "Price Action — Pivô de Alta / Saída de Consolidação",
+    "Price Action — Pivô de Baixa / Saída de Consolidação",
+    "Trade de Valor — RAPF Compra",
+    "Trade de Valor — RAPF Venda",
     "Retorno à média — IFR2 < 25 + MME50 ascendente",
     "MME9 / MME80 ascendentes",
 ]
@@ -68,10 +75,8 @@ def _expected_latest_closed_session(now: datetime):
         while candidate.weekday() >= 5:
             candidate -= timedelta(days=1)
         return candidate
-
     if now.time() < MARKET_CLOSE_CUTOFF:
         return _previous_weekday(now.date())
-
     return now.date()
 
 
@@ -139,19 +144,10 @@ def _editor_scope(prefix: str) -> str:
 
 def indicator_editor(prefix: str, default_type="IFR (RSI)") -> dict:
     scope = _editor_scope(prefix)
-    choice = st.selectbox(
-        "Indicador",
-        INDICATORS,
-        index=INDICATORS.index(default_type),
-        key=f"{scope}_kind",
-    )
+    choice = st.selectbox("Indicador", INDICATORS, index=INDICATORS.index(default_type), key=f"{scope}_kind")
 
     if choice == "Preço":
-        field_label = st.selectbox(
-            "Preço",
-            ["Fechamento", "Abertura", "Máxima", "Mínima"],
-            key=f"{scope}_field",
-        )
+        field_label = st.selectbox("Preço", ["Fechamento", "Abertura", "Máxima", "Mínima"], key=f"{scope}_field")
         field = {"Fechamento": "Close", "Abertura": "Open", "Máxima": "High", "Mínima": "Low"}[field_label]
         return {"kind": "PRICE", "field": field}
 
@@ -172,11 +168,7 @@ def indicator_editor(prefix: str, default_type="IFR (RSI)") -> dict:
         fast = c1.number_input("Rápida", 2, 100, 12, key=f"{scope}_macd_fast")
         slow = c2.number_input("Lenta", 3, 200, 26, key=f"{scope}_macd_slow")
         signal = c3.number_input("Sinal", 2, 100, 9, key=f"{scope}_macd_signal")
-        output_label = st.selectbox(
-            "Saída",
-            ["Linha MACD", "Linha de sinal", "Histograma"],
-            key=f"{scope}_macd_output",
-        )
+        output_label = st.selectbox("Saída", ["Linha MACD", "Linha de sinal", "Histograma"], key=f"{scope}_macd_output")
         output = {"Linha MACD": "macd", "Linha de sinal": "signal", "Histograma": "hist"}[output_label]
         return {"kind": "MACD", "fast": int(fast), "slow": int(slow), "signal": int(signal), "output": output}
 
@@ -184,11 +176,7 @@ def indicator_editor(prefix: str, default_type="IFR (RSI)") -> dict:
         c1, c2 = st.columns(2)
         period = c1.number_input("Período", 2, 300, 20, key=f"{scope}_bb_period")
         std = c2.number_input("Desvios", 0.1, 5.0, 2.0, 0.1, key=f"{scope}_bb_std")
-        output_label = st.selectbox(
-            "Saída",
-            ["Banda superior", "Média", "Banda inferior", "%B", "Bandwidth"],
-            key=f"{scope}_bb_output",
-        )
+        output_label = st.selectbox("Saída", ["Banda superior", "Média", "Banda inferior", "%B", "Bandwidth"], key=f"{scope}_bb_output")
         output = {"Banda superior": "upper", "Média": "middle", "Banda inferior": "lower", "%B": "pctb", "Bandwidth": "bandwidth"}[output_label]
         return {"kind": "BB", "period": int(period), "std": float(std), "output": output}
 
@@ -211,11 +199,7 @@ def indicator_editor(prefix: str, default_type="IFR (RSI)") -> dict:
         return {"kind": "ATR", "period": int(period)}
 
     period = st.number_input("Período da média de volume", 2, 300, 20, key=f"{scope}_volume_period")
-    output_label = st.selectbox(
-        "Saída",
-        ["Volume atual", "Média de volume", "Volume / média"],
-        key=f"{scope}_volume_output",
-    )
+    output_label = st.selectbox("Saída", ["Volume atual", "Média de volume", "Volume / média"], key=f"{scope}_volume_output")
     output = {"Volume atual": "volume", "Média de volume": "average", "Volume / média": "ratio"}[output_label]
     return {"kind": "VOLUME", "period": int(period), "output": output}
 
@@ -224,54 +208,37 @@ def preset_rules(name: str):
     price = {"kind": "PRICE", "field": "Close"}
     ema9 = {"kind": "EMA", "period": 9}
 
-    if name == "Stormer — PFR Compra":
-        return [{"left": price, "operator": "pfr_buy"}]
-    if name == "Stormer — PFR Venda":
-        return [{"left": price, "operator": "pfr_sell"}]
-    if name == "Stormer — Setup 123 Compra":
-        return [{"left": price, "operator": "setup_123_buy"}]
-    if name == "Stormer — Setup 123 Venda":
-        return [{"left": price, "operator": "setup_123_sell"}]
-    if name == "Stormer — IFR2 clássico":
-        return [{"left": {"kind": "RSI", "period": 2}, "operator": "ifr2_stormer"}]
+    if name == "Stormer — PFR Compra": return [{"left": price, "operator": "pfr_buy"}]
+    if name == "Stormer — PFR Venda": return [{"left": price, "operator": "pfr_sell"}]
+    if name == "Stormer — Setup 123 Compra": return [{"left": price, "operator": "setup_123_buy"}]
+    if name == "Stormer — Setup 123 Venda": return [{"left": price, "operator": "setup_123_sell"}]
+    if name == "Stormer — IFR2 clássico": return [{"left": {"kind": "RSI", "period": 2}, "operator": "ifr2_stormer"}]
     if name == "Stormer — Éden dos Traders Compra":
         return [
             {"left": {"kind": "EMA", "period": 8}, "operator": "rising"},
             {"connector": "AND", "left": {"kind": "EMA", "period": 80}, "operator": "rising"},
-            {
-                "connector": "AND",
-                "left": {"kind": "EMA", "period": 8},
-                "operator": ">",
-                "right_kind": "indicator",
-                "right": {"kind": "EMA", "period": 80},
-            },
+            {"connector": "AND", "left": {"kind": "EMA", "period": 8}, "operator": ">", "right_kind": "indicator", "right": {"kind": "EMA", "period": 80}},
         ]
     if name == "Stormer — Éden dos Traders Venda":
         return [
             {"left": {"kind": "EMA", "period": 8}, "operator": "falling"},
             {"connector": "AND", "left": {"kind": "EMA", "period": 80}, "operator": "falling"},
-            {
-                "connector": "AND",
-                "left": {"kind": "EMA", "period": 8},
-                "operator": "<",
-                "right_kind": "indicator",
-                "right": {"kind": "EMA", "period": 80},
-            },
+            {"connector": "AND", "left": {"kind": "EMA", "period": 8}, "operator": "<", "right_kind": "indicator", "right": {"kind": "EMA", "period": 80}},
         ]
-    if name == "Larry Williams — Setup 9.1 Compra":
-        return [{"left": ema9, "operator": "setup_91_buy"}]
-    if name == "Larry Williams — Setup 9.1 Venda":
-        return [{"left": ema9, "operator": "setup_91_sell"}]
-    if name == "Larry Williams — Setup 9.2 Compra":
-        return [{"left": ema9, "operator": "setup_92_buy"}]
-    if name == "Larry Williams — Setup 9.2 Venda":
-        return [{"left": ema9, "operator": "setup_92_sell"}]
-    if name == "Larry Williams — Setup 9.3 Compra":
-        return [{"left": ema9, "operator": "setup_93_buy"}]
-    if name == "Larry Williams — Setup 9.3 Venda":
-        return [{"left": ema9, "operator": "setup_93_sell"}]
-    if name == "Price Action — Inside Bar":
-        return [{"left": price, "operator": "inside_bar"}]
+    if name == "Larry Williams — Setup 9.1 Compra": return [{"left": ema9, "operator": "setup_91_buy"}]
+    if name == "Larry Williams — Setup 9.1 Venda": return [{"left": ema9, "operator": "setup_91_sell"}]
+    if name == "Larry Williams — Setup 9.2 Compra": return [{"left": ema9, "operator": "setup_92_buy"}]
+    if name == "Larry Williams — Setup 9.2 Venda": return [{"left": ema9, "operator": "setup_92_sell"}]
+    if name == "Larry Williams — Setup 9.3 Compra": return [{"left": ema9, "operator": "setup_93_buy"}]
+    if name == "Larry Williams — Setup 9.3 Venda": return [{"left": ema9, "operator": "setup_93_sell"}]
+    if name == "Larry Williams — Setup 9.4 O Susto Compra": return [{"left": price, "operator": "setup_94_buy"}]
+    if name == "Dave Landry — Compra": return [{"left": price, "operator": "landry_buy"}]
+    if name == "Dave Landry — Venda": return [{"left": price, "operator": "landry_sell"}]
+    if name == "Price Action — Inside Bar": return [{"left": price, "operator": "inside_bar"}]
+    if name == "Price Action — Pivô de Alta / Saída de Consolidação": return [{"left": price, "operator": "pivot_breakout_buy"}]
+    if name == "Price Action — Pivô de Baixa / Saída de Consolidação": return [{"left": price, "operator": "pivot_breakout_sell"}]
+    if name == "Trade de Valor — RAPF Compra": return [{"left": price, "operator": "rapf_buy"}]
+    if name == "Trade de Valor — RAPF Venda": return [{"left": price, "operator": "rapf_sell"}]
     if name == "Retorno à média — IFR2 < 25 + MME50 ascendente":
         return [
             {"left": {"kind": "RSI", "period": 2}, "operator": "<", "right_kind": "value", "right_value": 25.0},
@@ -290,15 +257,9 @@ st.caption("Monte scanners técnicos combinando indicadores, parâmetros, compar
 
 with st.sidebar:
     st.header("Universo")
-
     universe_name = st.selectbox(
         "Universo predefinido",
-        [
-            "Todos os ativos da B3",
-            "Ativos do Ibovespa",
-            "BDRs",
-            "Meus 23 ativos",
-        ],
+        ["Todos os ativos da B3", "Ativos do Ibovespa", "BDRs", "Meus 23 ativos"],
         index=1,
         key="universe_preset",
     )
@@ -330,24 +291,15 @@ with st.sidebar:
         if "ticker_text" not in st.session_state:
             st.session_state["ticker_text"] = universe_text(IBOVESPA)
 
-    ticker_text = st.text_area(
-        "Tickers",
-        height=420,
-        key="ticker_text",
-        help="Você pode editar a lista manualmente depois de carregar qualquer universo.",
-    )
-
+    ticker_text = st.text_area("Tickers", height=420, key="ticker_text", help="Você pode editar a lista manualmente depois de carregar qualquer universo.")
     timeframe = st.selectbox("Timeframe", ["Diário", "Semanal", "Mensal"])
     history_period = st.selectbox("Histórico", ["6mo", "1y", "2y", "5y", "10y"], index=2)
 
     st.divider()
     st.subheader("Estratégia")
     preset = st.selectbox("Atalho / preset", PRESETS)
-
     context_filters = st.multiselect(
-        "Filtros de contexto (opcionais)",
-        CONTEXT_FILTERS,
-        default=[],
+        "Filtros de contexto (opcionais)", CONTEXT_FILTERS, default=[],
         help="Os filtros são independentes da estratégia e são combinados por AND. Ex.: PFR Compra + Éden dos Traders Compra.",
     )
     if context_filters:
@@ -372,7 +324,6 @@ if rules is None:
             left = indicator_editor(f"rule_{i}_left", default_type="IFR (RSI)" if i == 0 else "MME (EMA)")
             operator_label = st.selectbox("Condição", list(OPERATORS.keys()), key=f"rule_{i}_operator")
             op = OPERATORS[operator_label]
-
             rule = {"left": left, "operator": op}
             if connector:
                 rule["connector"] = connector
@@ -388,12 +339,10 @@ if rules is None:
                     st.markdown("**Lado direito**")
                     right = indicator_editor(f"rule_{i}_right", default_type="MME (EMA)")
                     rule.update({"right_kind": "indicator", "right": right})
-
             rules.append(rule)
 else:
     st.subheader("Preset carregado")
     st.info(describe_strategy(rules))
-
     image_path = get_preset_image_path(preset)
     if image_path:
         st.image(image_path, use_container_width=True)
@@ -412,20 +361,12 @@ if run:
     if not tickers:
         st.error("Informe pelo menos um ticker.")
         st.stop()
-
     if len(tickers) > 150:
         st.info(f"Universo amplo selecionado: {len(tickers)} ativos. A consulta ao Yahoo Finance pode levar mais tempo.")
 
     provider = YahooFinanceProvider()
     with st.spinner(f"Analisando {len(tickers)} ativos..."):
-        result, errors = scan_universe(
-            tickers,
-            provider,
-            timeframe,
-            history_period,
-            rules,
-            context_filters=context_filters,
-        )
+        result, errors = scan_universe(tickers, provider, timeframe, history_period, rules, context_filters=context_filters)
 
     if result.empty:
         st.warning("Nenhum ativo pôde ser analisado.")
