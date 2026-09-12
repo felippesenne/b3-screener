@@ -32,7 +32,7 @@ OPERATORS = {
     "Descendente": "falling",
 }
 
-# Menu deliberadamente enxuto: somente as famílias que queremos priorizar.
+# Presets principais + famílias estruturais solicitadas.
 PRESETS = [
     "Strategy Builder",
     "IFR2 — Retorno à média em tendência de alta",
@@ -40,10 +40,20 @@ PRESETS = [
     "Larry Williams — Setup 9.1 Venda",
     "Larry Williams — Setup 9.2 Compra",
     "Larry Williams — Setup 9.2 Venda",
+    "Larry Williams — 9.1 + Estrutura Compra",
+    "Larry Williams — 9.1 + Estrutura Venda",
     "Dave Landry — Compra",
     "Dave Landry — Venda",
     "Price Action — Pivô de Alta Simples",
     "Price Action — Pivô de Baixa Simples",
+    "Price Action — Pivô 1-2-3 Alta",
+    "Price Action — Pivô 1-2-3 Baixa",
+    "Price Action — Fundo Duplo",
+    "Price Action — Topo Duplo",
+    "Price Action — OCO Invertido (Compra)",
+    "Price Action — OCO (Venda)",
+    "Divergência IFR14 + Estrutura — Compra",
+    "Divergência IFR14 + Estrutura — Venda",
     "Price Action — Pivô de Alta / Saída de Consolidação",
     "Price Action — Pivô de Baixa / Saída de Consolidação",
 ]
@@ -244,6 +254,10 @@ def preset_rules(name: str):
         return [{"left": ema9, "operator": "setup_92_buy"}, *_trend_rules("buy")]
     if name == "Larry Williams — Setup 9.2 Venda":
         return [{"left": ema9, "operator": "setup_92_sell"}, *_trend_rules("sell")]
+    if name == "Larry Williams — 9.1 + Estrutura Compra":
+        return [{"left": price, "operator": "setup_91_structure_buy"}]
+    if name == "Larry Williams — 9.1 + Estrutura Venda":
+        return [{"left": price, "operator": "setup_91_structure_sell"}]
     if name == "Dave Landry — Compra":
         return [{"left": price, "operator": "landry_buy"}]
     if name == "Dave Landry — Venda":
@@ -252,6 +266,22 @@ def preset_rules(name: str):
         return [{"left": price, "operator": "simple_pivot_buy"}]
     if name == "Price Action — Pivô de Baixa Simples":
         return [{"left": price, "operator": "simple_pivot_sell"}]
+    if name == "Price Action — Pivô 1-2-3 Alta":
+        return [{"left": price, "operator": "pivot_123_buy"}]
+    if name == "Price Action — Pivô 1-2-3 Baixa":
+        return [{"left": price, "operator": "pivot_123_sell"}]
+    if name == "Price Action — Fundo Duplo":
+        return [{"left": price, "operator": "double_bottom"}]
+    if name == "Price Action — Topo Duplo":
+        return [{"left": price, "operator": "double_top"}]
+    if name == "Price Action — OCO Invertido (Compra)":
+        return [{"left": price, "operator": "hns_buy"}]
+    if name == "Price Action — OCO (Venda)":
+        return [{"left": price, "operator": "hns_sell"}]
+    if name == "Divergência IFR14 + Estrutura — Compra":
+        return [{"left": price, "operator": "divergence_structure_buy"}]
+    if name == "Divergência IFR14 + Estrutura — Venda":
+        return [{"left": price, "operator": "divergence_structure_sell"}]
     if name == "Price Action — Pivô de Alta / Saída de Consolidação":
         return [{"left": price, "operator": "pivot_breakout_buy"}]
     if name == "Price Action — Pivô de Baixa / Saída de Consolidação":
