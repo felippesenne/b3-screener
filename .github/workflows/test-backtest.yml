@@ -15,6 +15,7 @@ on:
       - "tests_backtest_cli.py"
       - "tests_backtest_orders.py"
       - "tests_backtest_ui_helpers.py"
+      - "tests_backtest_streamlit_smoke.py"
       - ".github/workflows/test-backtest.yml"
   pull_request:
     paths:
@@ -25,6 +26,7 @@ on:
       - "tests_backtest_cli.py"
       - "tests_backtest_orders.py"
       - "tests_backtest_ui_helpers.py"
+      - "tests_backtest_streamlit_smoke.py"
       - ".github/workflows/test-backtest.yml"
 
 jobs:
@@ -42,3 +44,4 @@ jobs:
       - run: python tests_backtest_cli.py
       - run: python tests_backtest_orders.py
       - run: python tests_backtest_ui_helpers.py
+      - run: python tests_backtest_streamlit_smoke.py
