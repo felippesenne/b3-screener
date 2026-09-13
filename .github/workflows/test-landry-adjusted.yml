@@ -1,0 +1,31 @@
+name: Test adjusted Dave Landry backtest
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "backtest/landry_adjusted_engine.py"
+      - "backtest/landry_adjusted_setup.py"
+      - "backtest/ui_helpers.py"
+      - "tests_landry_adjusted.py"
+      - ".github/workflows/test-landry-adjusted.yml"
+  pull_request:
+    paths:
+      - "backtest/landry_adjusted_engine.py"
+      - "backtest/landry_adjusted_setup.py"
+      - "backtest/ui_helpers.py"
+      - "tests_landry_adjusted.py"
+      - ".github/workflows/test-landry-adjusted.yml"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -r requirements.txt
+      - run: python -m py_compile backtest/landry_adjusted_engine.py backtest/landry_adjusted_setup.py backtest/ui_helpers.py
+      - run: python tests_landry_adjusted.py
