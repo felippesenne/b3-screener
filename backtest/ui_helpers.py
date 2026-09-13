@@ -6,6 +6,8 @@ import pandas as pd
 
 from indicators import resample_ohlcv
 from .engine import BacktestConfig, BacktestResult
+from .landry_classic_engine import run_landry_classic_backtest
+from .landry_classic_setup import compile_landry_classic_orders
 from .order_engine import run_order_backtest
 from .setup_orders import compile_setup_orders
 from .signals import compile_rules_signal
@@ -18,8 +20,10 @@ SETUP_LABELS = {
     "PFR — Venda": "pfr_sell",
     "Setup 1-2-3 — Compra": "setup_123_buy",
     "Setup 1-2-3 — Venda": "setup_123_sell",
-    "Dave Landry Simple — Compra": "landry_simple_buy",
-    "Dave Landry Simple — Venda": "landry_simple_sell",
+    "Dave Landry — Simple Pullback Clássico Compra": "landry_classic_buy",
+    "Dave Landry — Simple Pullback Clássico Venda": "landry_classic_sell",
+    "Dave Landry Simple — Compra (simplificado)": "landry_simple_buy",
+    "Dave Landry Simple — Venda (simplificado)": "landry_simple_sell",
     "Dave Landry — Bow Tie Compra": "bowtie_buy",
     "Dave Landry — Bow Tie Venda": "bowtie_sell",
 }
@@ -94,18 +98,36 @@ def run_setup_backtest_from_history(
     landry_valid_bars: int = 1,
     bowtie_transition_bars: int = 4,
     same_bar_policy: str = "conservative",
+    landry_min_pullback_bars: int = 3,
+    landry_max_pullback_bars: int = 7,
+    landry_trend_lookback: int = 20,
+    landry_trailing_bars: int = 2,
 ) -> tuple[pd.DataFrame, pd.DataFrame, BacktestResult]:
     df = resample_ohlcv(raw, timeframe)
     if len(df) < 3:
         raise ValueError("Histórico insuficiente para backtest.")
 
-    orders = compile_setup_orders(
-        df,
-        setup_id,
-        tick_size=tick_size,
-        landry_valid_bars=landry_valid_bars,
-        bowtie_transition_bars=bowtie_transition_bars,
-    )
+    if setup_id.startswith("landry_classic_"):
+        side = setup_side(setup_id)
+        rows = compile_landry_classic_orders(
+            df,
+            setup_id,
+            side,
+            tick_size=tick_size,
+            min_pullback_bars=landry_min_pullback_bars,
+            max_pullback_bars=landry_max_pullback_bars,
+            trend_lookback=landry_trend_lookback,
+        )
+        orders = pd.DataFrame(rows)
+    else:
+        orders = compile_setup_orders(
+            df,
+            setup_id,
+            tick_size=tick_size,
+            landry_valid_bars=landry_valid_bars,
+            bowtie_transition_bars=bowtie_transition_bars,
+        )
+
     exit_rules = build_exit_rules(exit_label, setup_id)
     exit_signal = compile_rules_signal(df, exit_rules) if exit_rules else None
     config = BacktestConfig(
@@ -113,16 +135,29 @@ def run_setup_backtest_from_history(
         position_size_pct=float(position_size_pct),
         commission_bps=float(commission_bps),
         slippage_bps=float(slippage_bps),
-        take_profit_pct=take_profit_pct,
+        take_profit_pct=None if setup_id.startswith("landry_classic_") else take_profit_pct,
         periods_per_year=PERIODS_PER_YEAR[timeframe],
     )
-    result = run_order_backtest(
-        df,
-        orders=orders,
-        exit_signal=exit_signal,
-        config=config,
-        same_bar_policy=same_bar_policy,
-    )
+
+    if setup_id.startswith("landry_classic_"):
+        result = run_landry_classic_backtest(
+            df,
+            orders=orders,
+            exit_signal=exit_signal,
+            config=config,
+            same_bar_policy=same_bar_policy,
+            partial_fraction=0.50,
+            trailing_bars=landry_trailing_bars,
+            tick_size=tick_size,
+        )
+    else:
+        result = run_order_backtest(
+            df,
+            orders=orders,
+            exit_signal=exit_signal,
+            config=config,
+            same_bar_policy=same_bar_policy,
+        )
     return df, orders, result
 
 
