@@ -21,6 +21,7 @@ on:
       - "tests_backtest_streamlit_smoke.py"
       - "tests_navigation_smoke.py"
       - "tests_landry_classic.py"
+      - "tests_trade_chart.py"
       - ".github/workflows/test-backtest.yml"
   pull_request:
     paths:
@@ -35,6 +36,7 @@ on:
       - "tests_backtest_streamlit_smoke.py"
       - "tests_navigation_smoke.py"
       - "tests_landry_classic.py"
+      - "tests_trade_chart.py"
       - ".github/workflows/test-backtest.yml"
 
 jobs:
@@ -46,7 +48,7 @@ jobs:
         with:
           python-version: "3.11"
       - run: pip install -r requirements.txt
-      - run: python -m py_compile app.py pages/Screener.py pages/1_Backtesting.py backtest/__init__.py backtest/engine.py backtest/metrics.py backtest/signals.py backtest/order_engine.py backtest/setup_orders.py backtest/landry_classic_setup.py backtest/landry_classic_engine.py backtest/ui_helpers.py backtest/cli.py
+      - run: python -m py_compile app.py pages/Screener.py pages/1_Backtesting.py backtest/__init__.py backtest/engine.py backtest/metrics.py backtest/signals.py backtest/order_engine.py backtest/setup_orders.py backtest/landry_classic_setup.py backtest/landry_classic_engine.py backtest/landry_adjusted_setup.py backtest/landry_adjusted_engine.py backtest/trade_chart.py backtest/ui_helpers.py backtest/cli.py
       - run: python tests_backtest_engine.py
       - run: python tests_backtest_signals.py
       - run: python tests_backtest_cli.py
@@ -55,3 +57,4 @@ jobs:
       - run: python tests_backtest_streamlit_smoke.py
       - run: python tests_navigation_smoke.py
       - run: python tests_landry_classic.py
+      - run: python tests_trade_chart.py
