@@ -39,8 +39,8 @@ PRESETS = [
     "Larry Williams — Setup 9.1 Venda",
     "Price Action — Pivô 1-2-3 Alta",
     "Price Action — Pivô 1-2-3 Baixa",
-    "Momentum 20/50/80 — Compra",
-    "Momentum 20/50/80 — Venda",
+    "Dave Landry — Compra",
+    "Dave Landry — Venda",
 ]
 
 _EDITOR_OCCURRENCES = {}
@@ -244,9 +244,9 @@ def preset_rules(name: str):
     if name == "Larry Williams — 9.1 + Estrutura Venda":
         return [{"left": price, "operator": "setup_91_structure_sell"}]
     if name == "Dave Landry — Compra":
-        return [{"left": price, "operator": "landry_buy"}]
+        return [{"left": price, "operator": "landry_simple_buy"}]
     if name == "Dave Landry — Venda":
-        return [{"left": price, "operator": "landry_sell"}]
+        return [{"left": price, "operator": "landry_simple_sell"}]
     if name == "Price Action — Pivô de Alta Simples":
         return [{"left": price, "operator": "simple_pivot_buy"}]
     if name == "Price Action — Pivô de Baixa Simples":
