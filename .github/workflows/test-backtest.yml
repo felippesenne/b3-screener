@@ -1,0 +1,34 @@
+name: Test backtest engine
+
+on:
+  push:
+    branches:
+      - backtest-v1
+      - backtest-v1-core
+    paths:
+      - "backtest/**"
+      - "tests_backtest_engine.py"
+      - "tests_backtest_signals.py"
+      - "tests_backtest_cli.py"
+      - ".github/workflows/test-backtest.yml"
+  pull_request:
+    paths:
+      - "backtest/**"
+      - "tests_backtest_engine.py"
+      - "tests_backtest_signals.py"
+      - "tests_backtest_cli.py"
+      - ".github/workflows/test-backtest.yml"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -r requirements.txt
+      - run: python -m py_compile backtest/__init__.py backtest/engine.py backtest/metrics.py backtest/signals.py backtest/cli.py
+      - run: python tests_backtest_engine.py
+      - run: python tests_backtest_signals.py
+      - run: python tests_backtest_cli.py
