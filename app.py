@@ -32,13 +32,15 @@ OPERATORS = {
     "Descendente": "falling",
 }
 
-# Menu enxuto: somente os presets solicitados.
+# Menu enxuto: somente os presets priorizados.
 PRESETS = [
     "Strategy Builder",
     "Larry Williams — Setup 9.1 Compra",
     "Larry Williams — Setup 9.1 Venda",
     "Price Action — Pivô 1-2-3 Alta",
     "Price Action — Pivô 1-2-3 Baixa",
+    "Momentum 20/50/80 — Compra",
+    "Momentum 20/50/80 — Venda",
 ]
 
 _EDITOR_OCCURRENCES = {}
@@ -253,6 +255,10 @@ def preset_rules(name: str):
         return [{"left": price, "operator": "pivot_123_buy"}]
     if name == "Price Action — Pivô 1-2-3 Baixa":
         return [{"left": price, "operator": "pivot_123_sell"}]
+    if name == "Momentum 20/50/80 — Compra":
+        return [{"left": price, "operator": "momentum_205080_buy"}]
+    if name == "Momentum 20/50/80 — Venda":
+        return [{"left": price, "operator": "momentum_205080_sell"}]
     if name == "Price Action — Fundo Duplo":
         return [{"left": price, "operator": "double_bottom"}]
     if name == "Price Action — Topo Duplo":
