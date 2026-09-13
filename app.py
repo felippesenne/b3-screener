@@ -313,7 +313,7 @@ with st.sidebar:
 
     ticker_text = st.text_area(
         "Tickers",
-        height=420,
+        height=68,
         key="ticker_text",
         help="Você pode editar a lista manualmente depois de carregar qualquer universo.",
     )
