@@ -4,12 +4,20 @@ import argparse
 import json
 from pathlib import Path
 
+import pandas as pd
+
 from data_provider import YahooFinanceProvider
 from indicators import resample_ohlcv
 from .engine import BacktestConfig
+from .landry_classic_engine import run_landry_classic_backtest
+from .landry_classic_setup import compile_landry_classic_orders
 from .order_engine import run_order_backtest
 from .setup_orders import SUPPORTED_SETUPS, compile_setup_orders
 from .signals import compile_rules_signal, run_rules_backtest
+
+
+CLASSIC_LANDRY_SETUPS = {"landry_classic_buy", "landry_classic_sell"}
+ALL_SETUPS = SUPPORTED_SETUPS | CLASSIC_LANDRY_SETUPS
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -20,7 +28,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--entry-rules", help="Arquivo JSON com lista de regras de entrada")
-    mode.add_argument("--setup", choices=sorted(SUPPORTED_SETUPS), help="Setup clássico com gatilho por ordem")
+    mode.add_argument("--setup", choices=sorted(ALL_SETUPS), help="Setup clássico com gatilho por ordem")
 
     parser.add_argument("--exit-rules", help="Arquivo JSON com lista de regras de saída")
     parser.add_argument("--capital", type=float, default=100_000.0)
@@ -30,7 +38,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--stop-loss-pct", type=float, help="Stop percentual, ex.: 5 = 5%%")
     parser.add_argument("--take-profit-pct", type=float, help="Alvo percentual, ex.: 10 = 10%%")
     parser.add_argument("--tick-size", type=float, default=0.01, help="Incremento mínimo usado acima/abaixo do gatilho")
-    parser.add_argument("--landry-valid-bars", type=int, default=1, help="Número de candles em que o gatilho Landry Simple permanece válido")
+    parser.add_argument("--landry-valid-bars", type=int, default=1, help="Número de candles em que o gatilho Landry Simple simplificado permanece válido")
+    parser.add_argument("--landry-min-pullback-bars", type=int, default=3, help="Mínimo de barras do Simple Pullback clássico")
+    parser.add_argument("--landry-max-pullback-bars", type=int, default=7, help="Máximo de barras do Simple Pullback clássico")
+    parser.add_argument("--landry-trend-lookback", type=int, default=20, help="Janela da nova máxima/mínima antes do pullback")
+    parser.add_argument("--landry-trailing-bars", type=int, default=2, help="Barras anteriores usadas no trailing do runner após 1R")
     parser.add_argument("--bowtie-transition-bars", type=int, default=4, help="Janela máxima para a virada das médias do Bow Tie")
     parser.add_argument("--same-bar-policy", choices=["conservative", "trigger_first"], default="conservative")
     parser.add_argument("--output-dir", help="Diretório para metrics.json, trades.csv, equity.csv e orders.csv")
@@ -56,33 +68,60 @@ def main(argv: list[str] | None = None, provider=None) -> int:
     df = resample_ohlcv(raw, args.timeframe)
 
     periods_per_year = {"Diário": 252, "Semanal": 52, "Mensal": 12}[args.timeframe]
+    is_landry_classic = args.setup in CLASSIC_LANDRY_SETUPS
     config = BacktestConfig(
         initial_capital=args.capital,
         position_size_pct=args.position_size_pct / 100.0,
         commission_bps=args.commission_bps,
         slippage_bps=args.slippage_bps,
         stop_loss_pct=(args.stop_loss_pct / 100.0) if args.stop_loss_pct is not None else None,
-        take_profit_pct=(args.take_profit_pct / 100.0) if args.take_profit_pct is not None else None,
+        take_profit_pct=None if is_landry_classic else ((args.take_profit_pct / 100.0) if args.take_profit_pct is not None else None),
         periods_per_year=periods_per_year,
     )
 
     orders = None
     if args.setup:
-        orders = compile_setup_orders(
-            df,
-            args.setup,
-            tick_size=args.tick_size,
-            landry_valid_bars=args.landry_valid_bars,
-            bowtie_transition_bars=args.bowtie_transition_bars,
-        )
+        if is_landry_classic:
+            side = "long" if args.setup.endswith("_buy") else "short"
+            orders = pd.DataFrame(
+                compile_landry_classic_orders(
+                    df,
+                    args.setup,
+                    side,
+                    tick_size=args.tick_size,
+                    min_pullback_bars=args.landry_min_pullback_bars,
+                    max_pullback_bars=args.landry_max_pullback_bars,
+                    trend_lookback=args.landry_trend_lookback,
+                )
+            )
+        else:
+            orders = compile_setup_orders(
+                df,
+                args.setup,
+                tick_size=args.tick_size,
+                landry_valid_bars=args.landry_valid_bars,
+                bowtie_transition_bars=args.bowtie_transition_bars,
+            )
         exit_signal = compile_rules_signal(df, exit_rules) if exit_rules else None
-        result = run_order_backtest(
-            df,
-            orders=orders,
-            exit_signal=exit_signal,
-            config=config,
-            same_bar_policy=args.same_bar_policy,
-        )
+        if is_landry_classic:
+            result = run_landry_classic_backtest(
+                df,
+                orders=orders,
+                exit_signal=exit_signal,
+                config=config,
+                same_bar_policy=args.same_bar_policy,
+                partial_fraction=0.50,
+                trailing_bars=args.landry_trailing_bars,
+                tick_size=args.tick_size,
+            )
+        else:
+            result = run_order_backtest(
+                df,
+                orders=orders,
+                exit_signal=exit_signal,
+                config=config,
+                same_bar_policy=args.same_bar_policy,
+            )
         mode_name = "setup"
     else:
         result = run_rules_backtest(df, entry_rules=entry_rules or [], exit_rules=exit_rules, config=config)
