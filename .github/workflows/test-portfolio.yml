@@ -1,0 +1,34 @@
+name: Test portfolio control
+
+on:
+  push:
+    branches:
+      - add-portfolio-control
+      - main
+    paths:
+      - "portfolio/**"
+      - "pages/2_Carteira.py"
+      - "app.py"
+      - "requirements.txt"
+      - "tests_portfolio.py"
+      - ".github/workflows/test-portfolio.yml"
+  pull_request:
+    paths:
+      - "portfolio/**"
+      - "pages/2_Carteira.py"
+      - "app.py"
+      - "requirements.txt"
+      - "tests_portfolio.py"
+      - ".github/workflows/test-portfolio.yml"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -r requirements.txt
+      - run: python -m py_compile app.py pages/2_Carteira.py portfolio/__init__.py portfolio/calculations.py portfolio/market_data.py
+      - run: python tests_portfolio.py
