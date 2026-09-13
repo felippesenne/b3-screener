@@ -9,6 +9,7 @@ import pandas as pd
 from data_provider import YahooFinanceProvider
 from indicators import resample_ohlcv
 from .engine import BacktestConfig
+from .ifr2_ifr14_rolling import SETUP_ID as IFR2_IFR14_ROLLING_SETUP, run_ifr2_ifr14_rolling_backtest
 from .landry_classic_engine import run_landry_classic_backtest
 from .landry_classic_setup import compile_landry_classic_orders
 from .order_engine import run_order_backtest
@@ -17,7 +18,8 @@ from .signals import compile_rules_signal, run_rules_backtest
 
 
 CLASSIC_LANDRY_SETUPS = {"landry_classic_buy", "landry_classic_sell"}
-ALL_SETUPS = SUPPORTED_SETUPS | CLASSIC_LANDRY_SETUPS
+SPECIAL_SETUPS = CLASSIC_LANDRY_SETUPS | {IFR2_IFR14_ROLLING_SETUP}
+ALL_SETUPS = SUPPORTED_SETUPS | SPECIAL_SETUPS
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -69,59 +71,71 @@ def main(argv: list[str] | None = None, provider=None) -> int:
 
     periods_per_year = {"Diário": 252, "Semanal": 52, "Mensal": 12}[args.timeframe]
     is_landry_classic = args.setup in CLASSIC_LANDRY_SETUPS
+    is_ifr_rolling = args.setup == IFR2_IFR14_ROLLING_SETUP
     config = BacktestConfig(
         initial_capital=args.capital,
         position_size_pct=args.position_size_pct / 100.0,
         commission_bps=args.commission_bps,
         slippage_bps=args.slippage_bps,
         stop_loss_pct=(args.stop_loss_pct / 100.0) if args.stop_loss_pct is not None else None,
-        take_profit_pct=None if is_landry_classic else ((args.take_profit_pct / 100.0) if args.take_profit_pct is not None else None),
+        take_profit_pct=None if (is_landry_classic or is_ifr_rolling) else ((args.take_profit_pct / 100.0) if args.take_profit_pct is not None else None),
         periods_per_year=periods_per_year,
     )
 
     orders = None
     if args.setup:
-        if is_landry_classic:
-            side = "long" if args.setup.endswith("_buy") else "short"
-            orders = pd.DataFrame(
-                compile_landry_classic_orders(
+        if is_ifr_rolling:
+            orders, result = run_ifr2_ifr14_rolling_backtest(
+                df,
+                config=config,
+                entry_rsi_period=2,
+                entry_rsi_level=10.0,
+                exit_rsi_period=14,
+                exit_rsi_level=70.0,
+                tick_size=args.tick_size,
+            )
+        else:
+            if is_landry_classic:
+                side = "long" if args.setup.endswith("_buy") else "short"
+                orders = pd.DataFrame(
+                    compile_landry_classic_orders(
+                        df,
+                        args.setup,
+                        side,
+                        tick_size=args.tick_size,
+                        min_pullback_bars=args.landry_min_pullback_bars,
+                        max_pullback_bars=args.landry_max_pullback_bars,
+                        trend_lookback=args.landry_trend_lookback,
+                    )
+                )
+            else:
+                orders = compile_setup_orders(
                     df,
                     args.setup,
-                    side,
                     tick_size=args.tick_size,
-                    min_pullback_bars=args.landry_min_pullback_bars,
-                    max_pullback_bars=args.landry_max_pullback_bars,
-                    trend_lookback=args.landry_trend_lookback,
+                    landry_valid_bars=args.landry_valid_bars,
+                    bowtie_transition_bars=args.bowtie_transition_bars,
                 )
-            )
-        else:
-            orders = compile_setup_orders(
-                df,
-                args.setup,
-                tick_size=args.tick_size,
-                landry_valid_bars=args.landry_valid_bars,
-                bowtie_transition_bars=args.bowtie_transition_bars,
-            )
-        exit_signal = compile_rules_signal(df, exit_rules) if exit_rules else None
-        if is_landry_classic:
-            result = run_landry_classic_backtest(
-                df,
-                orders=orders,
-                exit_signal=exit_signal,
-                config=config,
-                same_bar_policy=args.same_bar_policy,
-                partial_fraction=0.50,
-                trailing_bars=args.landry_trailing_bars,
-                tick_size=args.tick_size,
-            )
-        else:
-            result = run_order_backtest(
-                df,
-                orders=orders,
-                exit_signal=exit_signal,
-                config=config,
-                same_bar_policy=args.same_bar_policy,
-            )
+            exit_signal = compile_rules_signal(df, exit_rules) if exit_rules else None
+            if is_landry_classic:
+                result = run_landry_classic_backtest(
+                    df,
+                    orders=orders,
+                    exit_signal=exit_signal,
+                    config=config,
+                    same_bar_policy=args.same_bar_policy,
+                    partial_fraction=0.50,
+                    trailing_bars=args.landry_trailing_bars,
+                    tick_size=args.tick_size,
+                )
+            else:
+                result = run_order_backtest(
+                    df,
+                    orders=orders,
+                    exit_signal=exit_signal,
+                    config=config,
+                    same_bar_policy=args.same_bar_policy,
+                )
         mode_name = "setup"
     else:
         result = run_rules_backtest(df, entry_rules=entry_rules or [], exit_rules=exit_rules, config=config)

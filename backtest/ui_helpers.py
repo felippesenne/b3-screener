@@ -6,6 +6,7 @@ import pandas as pd
 
 from indicators import resample_ohlcv
 from .engine import BacktestConfig, BacktestResult
+from .ifr2_ifr14_rolling import SETUP_ID as IFR2_IFR14_ROLLING_SETUP, run_ifr2_ifr14_rolling_backtest
 from .landry_adjusted_engine import run_landry_adjusted_backtest
 from .landry_adjusted_setup import compile_landry_adjusted_orders
 from .landry_classic_engine import run_landry_classic_backtest
@@ -22,6 +23,7 @@ SETUP_LABELS = {
     "PFR — Venda": "pfr_sell",
     "Setup 1-2-3 — Compra": "setup_123_buy",
     "Setup 1-2-3 — Venda": "setup_123_sell",
+    "IFR2 < 10 → máxima | Saída IFR14 > 70 → mínima": IFR2_IFR14_ROLLING_SETUP,
     "Dave Landry ajustado de compra": "landry_adjusted_buy",
     "Dave Landry — Simple Pullback Clássico Compra": "landry_classic_buy",
     "Dave Landry — Simple Pullback Clássico Venda": "landry_classic_sell",
@@ -111,8 +113,11 @@ def run_setup_backtest_from_history(
         raise ValueError("Histórico insuficiente para backtest.")
 
     is_adjusted_landry = setup_id == "landry_adjusted_buy"
+    is_ifr_rolling = setup_id == IFR2_IFR14_ROLLING_SETUP
 
-    if is_adjusted_landry:
+    if is_ifr_rolling:
+        orders = pd.DataFrame()
+    elif is_adjusted_landry:
         orders = compile_landry_adjusted_orders(df)
     elif setup_id.startswith("landry_classic_"):
         side = setup_side(setup_id)
@@ -135,9 +140,9 @@ def run_setup_backtest_from_history(
             bowtie_transition_bars=bowtie_transition_bars,
         )
 
-    # O Dave Landry ajustado tem saída exclusivamente pelo Stop ATR, conforme
-    # especificação. Alvos e saídas adicionais da UI são ignorados nesse setup.
-    if is_adjusted_landry:
+    # Setups com gestão interna ignoram alvos e sinais adicionais da UI para
+    # preservar exatamente as regras específicas da estratégia.
+    if is_adjusted_landry or is_ifr_rolling:
         exit_signal = None
     else:
         exit_rules = build_exit_rules(exit_label, setup_id)
@@ -148,11 +153,21 @@ def run_setup_backtest_from_history(
         position_size_pct=float(position_size_pct),
         commission_bps=float(commission_bps),
         slippage_bps=float(slippage_bps),
-        take_profit_pct=None if (setup_id.startswith("landry_classic_") or is_adjusted_landry) else take_profit_pct,
+        take_profit_pct=None if (setup_id.startswith("landry_classic_") or is_adjusted_landry or is_ifr_rolling) else take_profit_pct,
         periods_per_year=PERIODS_PER_YEAR[timeframe],
     )
 
-    if is_adjusted_landry:
+    if is_ifr_rolling:
+        orders, result = run_ifr2_ifr14_rolling_backtest(
+            df,
+            config=config,
+            entry_rsi_period=2,
+            entry_rsi_level=10.0,
+            exit_rsi_period=14,
+            exit_rsi_level=70.0,
+            tick_size=tick_size,
+        )
+    elif is_adjusted_landry:
         result = run_landry_adjusted_backtest(
             df,
             orders=orders,
