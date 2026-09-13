@@ -11,7 +11,7 @@ from classic_setups import (
     special_setup_description,
     special_setup_state,
 )
-from indicators import build_series_cache, indicator_label, resample_ohlcv, spec_key
+from indicators import adx_components, build_series_cache, indicator_label, resample_ohlcv, spec_key
 
 OPS = {"<": operator.lt, "<=": operator.le, ">": operator.gt, ">=": operator.ge, "==": operator.eq}
 
@@ -33,6 +33,45 @@ def _finite(value) -> bool:
         return not pd.isna(value) and math.isfinite(float(value))
     except Exception:
         return False
+
+
+def trend_label(adx_value, plus_di_value, minus_di_value) -> str:
+    """Classifica o regime de tendência usando ADX/DMI(14).
+
+    ADX < 20: lateral.
+    20 <= ADX < 25: transição, com seta dada pelo DI dominante.
+    25 <= ADX < 35: tendência direcional.
+    ADX >= 35: tendência direcional forte.
+    """
+    if not all(_finite(value) for value in (adx_value, plus_di_value, minus_di_value)):
+        return "⚪ Sem dados"
+
+    adx_now = float(adx_value)
+    plus_di_now = float(plus_di_value)
+    minus_di_now = float(minus_di_value)
+
+    if adx_now < 20:
+        return "🟡 Lateral"
+
+    if plus_di_now == minus_di_now:
+        return "🟡 Lateral"
+
+    direction_up = plus_di_now > minus_di_now
+
+    if adx_now < 25:
+        return "🟠 Transição ↑" if direction_up else "🟠 Transição ↓"
+
+    if adx_now >= 35:
+        return "🟢 Alta forte" if direction_up else "🔴 Baixa forte"
+
+    return "🟢 Alta" if direction_up else "🔴 Baixa"
+
+
+def classify_trend(df: pd.DataFrame, period: int = 14) -> str:
+    adx, plus_di, minus_di = adx_components(df, period)
+    if df.empty:
+        return "⚪ Sem dados"
+    return trend_label(adx.iloc[-1], plus_di.iloc[-1], minus_di.iloc[-1])
 
 
 def _setup_91_state(df: pd.DataFrame, ema9: pd.Series, side: str) -> dict:
@@ -287,6 +326,7 @@ def evaluate_latest(
 
     row = {
         "Ticker": ticker,
+        "TENDÊNCIA": classify_trend(df),
         "Fechamento": round(float(df["Close"].iloc[-1]), 2),
         "Data": df.index[-1].strftime("%d/%m/%Y"),
         "Passou": passed,
