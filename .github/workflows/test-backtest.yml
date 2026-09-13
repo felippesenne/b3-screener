@@ -5,11 +5,13 @@ on:
     branches:
       - backtest-v1
       - backtest-v1-core
+      - backtest-v1-orders
     paths:
       - "backtest/**"
       - "tests_backtest_engine.py"
       - "tests_backtest_signals.py"
       - "tests_backtest_cli.py"
+      - "tests_backtest_orders.py"
       - ".github/workflows/test-backtest.yml"
   pull_request:
     paths:
@@ -17,6 +19,7 @@ on:
       - "tests_backtest_engine.py"
       - "tests_backtest_signals.py"
       - "tests_backtest_cli.py"
+      - "tests_backtest_orders.py"
       - ".github/workflows/test-backtest.yml"
 
 jobs:
@@ -28,7 +31,8 @@ jobs:
         with:
           python-version: "3.11"
       - run: pip install -r requirements.txt
-      - run: python -m py_compile backtest/__init__.py backtest/engine.py backtest/metrics.py backtest/signals.py backtest/cli.py
+      - run: python -m py_compile backtest/__init__.py backtest/engine.py backtest/metrics.py backtest/signals.py backtest/order_engine.py backtest/setup_orders.py backtest/cli.py
       - run: python tests_backtest_engine.py
       - run: python tests_backtest_signals.py
       - run: python tests_backtest_cli.py
+      - run: python tests_backtest_orders.py

@@ -24,6 +24,21 @@ class FakeProvider:
         )
 
 
+class SetupProvider:
+    def get_history(self, ticker: str, period: str = "5y") -> pd.DataFrame:
+        idx = pd.date_range("2026-02-02", periods=5, freq="B")
+        return pd.DataFrame(
+            {
+                "Open": [10.0, 10.1, 9.8, 10.0, 10.6],
+                "High": [10.8, 10.6, 10.5, 10.8, 10.9],
+                "Low": [9.5, 9.3, 9.0, 9.8, 10.2],
+                "Close": [10.2, 9.8, 10.0, 10.7, 10.8],
+                "Volume": [1_000_000] * len(idx),
+            },
+            index=idx,
+        )
+
+
 class BacktestCliTests(unittest.TestCase):
     def test_cli_runs_without_network_and_writes_outputs(self):
         rules = [
@@ -61,6 +76,30 @@ class BacktestCliTests(unittest.TestCase):
             payload = json.loads((out_dir / "metrics.json").read_text(encoding="utf-8"))
             self.assertEqual(payload["ticker"], "TEST3")
             self.assertEqual(payload["bars"], 8)
+            self.assertEqual(payload["mode"], "rules")
+            self.assertGreaterEqual(payload["metrics"]["trades"], 1)
+
+    def test_cli_setup_mode_writes_orders_and_runs_trigger_engine(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            out_dir = Path(tmp) / "setup-out"
+            rc = main(
+                [
+                    "--ticker", "TEST3",
+                    "--period", "1y",
+                    "--timeframe", "Diário",
+                    "--setup", "pfr_buy",
+                    "--capital", "10000",
+                    "--output-dir", str(out_dir),
+                ],
+                provider=SetupProvider(),
+            )
+
+            self.assertEqual(rc, 0)
+            self.assertTrue((out_dir / "orders.csv").exists())
+            payload = json.loads((out_dir / "metrics.json").read_text(encoding="utf-8"))
+            self.assertEqual(payload["mode"], "setup")
+            self.assertEqual(payload["setup"], "pfr_buy")
+            self.assertGreaterEqual(payload["orders"], 1)
             self.assertGreaterEqual(payload["metrics"]["trades"], 1)
 
 
