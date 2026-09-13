@@ -5,6 +5,11 @@ import math
 import pandas as pd
 
 from indicators import ema
+from momentum_205080_setups import (
+    MOMENTUM_205080_OPS,
+    momentum_205080_description,
+    momentum_205080_state,
+)
 from structure_setups import (
     STRUCTURE_SETUP_OPS,
     structure_setup_description,
@@ -21,7 +26,7 @@ SPECIAL_SETUP_OPS = {
     "pfr_buy", "pfr_sell", "setup_123_buy", "setup_123_sell",
     "setup_92_buy", "setup_92_sell", "setup_93_buy", "setup_93_sell",
     "ifr2_stormer", "inside_bar",
-} | TRADE_DE_VALOR_SETUP_OPS | STRUCTURE_SETUP_OPS
+} | TRADE_DE_VALOR_SETUP_OPS | STRUCTURE_SETUP_OPS | MOMENTUM_205080_OPS
 
 SPECIAL_SETUP_DESCRIPTIONS = {
     "pfr_buy": "Stormer — PFR Compra: mínima inferior às duas anteriores e fechamento acima do fechamento anterior; gatilho no rompimento da máxima do candle-sinal",
@@ -229,6 +234,7 @@ def special_setup_state(df: pd.DataFrame, op: str, left: pd.Series) -> dict:
     if op == "inside_bar": return _inside_bar_state(df)
     if op in TRADE_DE_VALOR_SETUP_OPS: return trade_de_valor_setup_state(df, op)
     if op in STRUCTURE_SETUP_OPS: return structure_setup_state(df, op)
+    if op in MOMENTUM_205080_OPS: return momentum_205080_state(df, op)
     raise ValueError(f"Setup especial não suportado: {op}")
 
 
@@ -237,6 +243,8 @@ def special_setup_description(op: str) -> str:
         return trade_de_valor_setup_description(op)
     if op in STRUCTURE_SETUP_OPS:
         return structure_setup_description(op)
+    if op in MOMENTUM_205080_OPS:
+        return momentum_205080_description(op)
     return SPECIAL_SETUP_DESCRIPTIONS.get(op, op)
 
 
