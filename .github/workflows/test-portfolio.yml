@@ -11,6 +11,7 @@ on:
       - "app.py"
       - "requirements.txt"
       - "tests_portfolio.py"
+      - "tests_portfolio_streamlit_smoke.py"
       - ".github/workflows/test-portfolio.yml"
   pull_request:
     paths:
@@ -19,6 +20,7 @@ on:
       - "app.py"
       - "requirements.txt"
       - "tests_portfolio.py"
+      - "tests_portfolio_streamlit_smoke.py"
       - ".github/workflows/test-portfolio.yml"
 
 jobs:
@@ -32,3 +34,4 @@ jobs:
       - run: pip install -r requirements.txt
       - run: python -m py_compile app.py pages/2_Carteira.py portfolio/__init__.py portfolio/calculations.py portfolio/market_data.py
       - run: python tests_portfolio.py
+      - run: python tests_portfolio_streamlit_smoke.py
