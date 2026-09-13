@@ -43,6 +43,17 @@ PRESETS = [
     "Dave Landry — Venda",
 ]
 
+HIDDEN_CONTEXT_FILTERS = {
+    "MME80 ascendente",
+    "MME80 descendente",
+    "Stormer MME49 — Compra",
+    "Stormer MME49 — Venda",
+    "Preço acima da MME200",
+}
+VISIBLE_CONTEXT_FILTERS = [
+    name for name in CONTEXT_FILTERS if name not in HIDDEN_CONTEXT_FILTERS
+]
+
 _EDITOR_OCCURRENCES = {}
 
 
@@ -331,7 +342,7 @@ with st.sidebar:
     preset = st.selectbox("Atalho / preset", PRESETS)
     context_filters = st.multiselect(
         "Filtros de contexto (opcionais)",
-        CONTEXT_FILTERS,
+        VISIBLE_CONTEXT_FILTERS,
         default=[],
         help="Os filtros são independentes da estratégia e combinados por AND. Use-os para exigir contexto adicional sem criar novos presets.",
     )
@@ -385,9 +396,10 @@ if rules is None:
 else:
     st.subheader("Preset carregado")
     st.info(describe_strategy(rules))
-    image_path = get_preset_image_path(preset)
-    if image_path:
-        st.image(image_path, use_container_width=True)
+    if not preset.startswith("Larry Williams —"):
+        image_path = get_preset_image_path(preset)
+        if image_path:
+            st.image(image_path, use_container_width=True)
 
 st.subheader("Estratégia atual")
 st.code(describe_strategy(rules), language=None)
