@@ -343,7 +343,7 @@ rules = preset_rules(preset)
 if rules is None:
     st.subheader("Construtor de estratégia")
     st.caption("As regras são avaliadas da esquerda para a direita. Cada condição a partir da segunda pode usar AND ou OR.")
-    rule_count = st.number_input("Número de condições", min_value=1, max_value=10, value=2, step=1)
+    rule_count = st.number_input("Número de condições", min_value=1, max_value=10, value=1, step=1)
     rules = []
 
     for i in range(int(rule_count)):
