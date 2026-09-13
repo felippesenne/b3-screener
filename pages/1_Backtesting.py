@@ -7,7 +7,11 @@ import pandas as pd
 import streamlit as st
 
 from bdr_universe import BDRS
-from backtest.trade_chart import build_operational_chart_frame, operational_chart_spec
+from backtest.trade_chart import (
+    build_operational_chart_frame,
+    build_operational_figure,
+    slice_trade_window,
+)
 from backtest.ui_helpers import (
     EXIT_LABELS,
     SETUP_LABELS,
@@ -51,7 +55,25 @@ def fmt_metric(value, suffix: str = "") -> str:
     return f"{value:,.2f}{suffix}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 
-def render_single(ticker: str, df: pd.DataFrame, orders: pd.DataFrame, result, capital: float):
+def _trade_option_label(trade: pd.Series, idx: int) -> str:
+    entry = pd.to_datetime(trade.get("EntryDate"), errors="coerce")
+    exit_ = pd.to_datetime(trade.get("ExitDate"), errors="coerce")
+    entry_text = entry.strftime("%d/%m/%Y") if not pd.isna(entry) else "—"
+    exit_text = exit_.strftime("%d/%m/%Y") if not pd.isna(exit_) else "—"
+    ret = finite_or_none(trade.get("ReturnPct"))
+    ret_text = f"{ret:+.2f}%" if ret is not None else "—"
+    return f"Operação {idx + 1} · {entry_text} → {exit_text} · {ret_text}"
+
+
+def render_single(
+    ticker: str,
+    df: pd.DataFrame,
+    orders: pd.DataFrame,
+    result,
+    capital: float,
+    setup_id: str,
+    exit_label: str,
+):
     metrics = result.metrics
     st.subheader(f"Resultado — {ticker}")
 
@@ -69,13 +91,63 @@ def render_single(ticker: str, df: pd.DataFrame, orders: pd.DataFrame, result, c
     c9.metric("Expectância", f"R$ {fmt_metric(metrics.get('expectancy'))}")
     c10.metric("Equity final", f"R$ {fmt_metric(metrics.get('final_equity'))}")
 
-    st.markdown("#### Gráfico operacional — entradas, saídas e stops")
-    chart_frame = build_operational_chart_frame(df, result.trades, result.equity_curve)
-    st.vega_lite_chart(chart_frame, operational_chart_spec(), use_container_width=True)
+    st.markdown("#### Gráfico operacional detalhado")
+    chart_frame = build_operational_chart_frame(
+        df,
+        result.trades,
+        result.equity_curve,
+        orders,
+        setup_id=setup_id,
+        exit_label=exit_label,
+    )
+
+    selected_trade = None
+    display_frame = chart_frame
+    if not result.trades.empty:
+        labels = ["Todas as operações"]
+        label_to_idx: dict[str, int] = {}
+        for idx in reversed(range(len(result.trades))):
+            label = _trade_option_label(result.trades.iloc[idx], idx)
+            labels.append(label)
+            label_to_idx[label] = idx
+
+        selected_label = st.selectbox(
+            "Visualização do gráfico",
+            labels,
+            index=1,
+            help="A última operação abre ampliada por padrão. Escolha 'Todas as operações' para ver o histórico completo.",
+            key=f"trade_chart_view_{ticker}",
+        )
+        if selected_label != "Todas as operações":
+            selected_trade = result.trades.iloc[label_to_idx[selected_label]]
+            display_frame = slice_trade_window(chart_frame, selected_trade, padding_bars=12)
+
+            t1, t2, t3, t4 = st.columns(4)
+            t1.metric("Entrada", f"R$ {fmt_metric(selected_trade.get('EntryPrice'))}")
+            t2.metric("Saída", f"R$ {fmt_metric(selected_trade.get('ExitPrice', selected_trade.get('FinalExitPrice')))}")
+            t3.metric("Resultado", fmt_metric(selected_trade.get("ReturnPct"), "%"))
+            t4.metric("P&L", f"R$ {fmt_metric(selected_trade.get('PnL'))}")
+
+    figure = build_operational_figure(
+        display_frame,
+        setup_id=setup_id,
+        exit_label=exit_label,
+        selected_trade=selected_trade,
+    )
+    st.plotly_chart(
+        figure,
+        use_container_width=True,
+        config={
+            "displaylogo": False,
+            "scrollZoom": True,
+            "responsive": True,
+        },
+        key=f"operational_chart_{ticker}",
+    )
     st.caption(
-        "▲ Entrada executada · ▼ Saída final · ◆ Saída parcial · ✕ Stop acionado · "
-        "■ Stop inicial · linha tracejada = stop vigente. Nos setups com trailing registrado, "
-        "a linha acompanha o stop efetivamente usado pelo motor do backtest."
+        "Use a roda do mouse/trackpad para zoom, arraste para ampliar uma região e dê duplo clique para resetar. "
+        "▲ entrada · ▼ saída · ◆ parcial · ✕ stop · ■ stop inicial. Linhas pontilhadas mostram gatilhos; "
+        "linha tracejada mostra o stop vigente. Quando o setup usa IFR, o indicador aparece sincronizado abaixo dos candles."
     )
 
     strategy = result.equity_curve["Equity"].astype(float) / float(capital) * 100.0
@@ -294,7 +366,7 @@ if run:
             with st.spinner(f"Executando {setup_label} em {current}..."):
                 raw = cached_history(current, period)
                 df, orders, result = run_setup_backtest_from_history(raw, **kwargs)
-            render_single(current, df, orders, result, float(capital))
+            render_single(current, df, orders, result, float(capital), setup_id, exit_label)
         except Exception as exc:
             st.error(f"Não foi possível executar o backtest de {current}: {exc}")
     else:
