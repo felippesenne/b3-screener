@@ -4,7 +4,7 @@ import math
 
 import pandas as pd
 
-from indicators import ema
+from indicators import ema, sma
 from momentum_205080_setups import (
     MOMENTUM_205080_OPS,
     momentum_205080_description,
@@ -26,6 +26,7 @@ SPECIAL_SETUP_OPS = {
     "pfr_buy", "pfr_sell", "setup_123_buy", "setup_123_sell",
     "setup_92_buy", "setup_92_sell", "setup_93_buy", "setup_93_sell",
     "ifr2_stormer", "inside_bar",
+    "landry_simple_buy", "landry_simple_sell",
 } | TRADE_DE_VALOR_SETUP_OPS | STRUCTURE_SETUP_OPS | MOMENTUM_205080_OPS
 
 SPECIAL_SETUP_DESCRIPTIONS = {
@@ -39,6 +40,8 @@ SPECIAL_SETUP_DESCRIPTIONS = {
     "setup_93_sell": "Larry Williams — Setup 9.3 Venda: MME9 descendente e dois fechamentos consecutivos ascendentes após candle de referência; gatilho na mínima do último candle",
     "ifr2_stormer": "Stormer — IFR2 clássico: IFR(2) abaixo de 5, entrada no fechamento do candle e stop de referência na expansão de 130% da amplitude",
     "inside_bar": "Inside Bar: candle atual completamente dentro da máxima e mínima do candle anterior",
+    "landry_simple_buy": "Dave Landry — Compra: a mínima do candle atual deve ser menor que as mínimas dos dois candles anteriores.",
+    "landry_simple_sell": "Dave Landry — Venda: a máxima do candle atual deve ser maior que as máximas dos dois candles anteriores.",
 }
 
 CONTEXT_FILTERS = [
@@ -46,6 +49,7 @@ CONTEXT_FILTERS = [
     "MME80 ascendente", "MME80 descendente",
     "Stormer MME49 — Compra", "Stormer MME49 — Venda",
     "Preço acima da MME200", "Preço abaixo da MME200",
+    "MMS20/50/80 ascendentes", "MMS20/50/80 descendentes",
     "Inside Bar atual",
 ]
 
@@ -65,6 +69,44 @@ def _base_state(*, passed: bool, name: str, status: str, direction: str | None =
         "direction": direction, "signal_date": signal_date,
         "trigger_date": trigger_date, "entry": entry, "stop": stop,
     }
+
+
+def _landry_simple_state(df: pd.DataFrame, side: str) -> dict:
+    name = "Dave Landry — Compra" if side == "buy" else "Dave Landry — Venda"
+    direction = "Compra" if side == "buy" else "Venda"
+    if len(df) < 3:
+        return _base_state(passed=False, name=name, status="sem dados suficientes", direction=direction)
+
+    last = len(df) - 1
+    if side == "buy":
+        current = float(df["Low"].iloc[last])
+        previous_two = df["Low"].iloc[last - 2:last].astype(float)
+        passed = current < float(previous_two.min())
+        status = (
+            f"mínima atual {current:.2f} abaixo das duas mínimas anteriores "
+            f"({float(previous_two.iloc[0]):.2f} / {float(previous_two.iloc[1]):.2f})"
+            if passed
+            else f"mínima atual {current:.2f} não é menor que as duas mínimas anteriores"
+        )
+    else:
+        current = float(df["High"].iloc[last])
+        previous_two = df["High"].iloc[last - 2:last].astype(float)
+        passed = current > float(previous_two.max())
+        status = (
+            f"máxima atual {current:.2f} acima das duas máximas anteriores "
+            f"({float(previous_two.iloc[0]):.2f} / {float(previous_two.iloc[1]):.2f})"
+            if passed
+            else f"máxima atual {current:.2f} não é maior que as duas máximas anteriores"
+        )
+
+    return _base_state(
+        passed=passed,
+        name=name,
+        status=status,
+        direction=direction,
+        signal_date=df.index[last] if passed else None,
+        trigger_date=df.index[last] if passed else None,
+    )
 
 
 def _pfr_signal(df: pd.DataFrame, i: int, side: str, lookback: int = 2) -> bool:
@@ -222,6 +264,8 @@ def _inside_bar_state(df: pd.DataFrame) -> dict:
 
 
 def special_setup_state(df: pd.DataFrame, op: str, left: pd.Series) -> dict:
+    if op == "landry_simple_buy": return _landry_simple_state(df, "buy")
+    if op == "landry_simple_sell": return _landry_simple_state(df, "sell")
     if op == "pfr_buy": return _pfr_state(df, "buy")
     if op == "pfr_sell": return _pfr_state(df, "sell")
     if op == "setup_123_buy": return _setup_123_state(df, "buy")
@@ -282,6 +326,18 @@ def evaluate_context_filter(df: pd.DataFrame, name: str) -> tuple[bool, str]:
         e200 = ema(close, 200)
         if not _finite(e200.iloc[-1]): return False, f"{name}: sem dados suficientes"
         passed = close.iloc[-1] > e200.iloc[-1] if "acima" in name else close.iloc[-1] < e200.iloc[-1]
+        return bool(passed), name
+    if name in {"MMS20/50/80 ascendentes", "MMS20/50/80 descendentes"}:
+        if len(df) < 81:
+            return False, f"{name}: sem dados suficientes"
+        m20, m50, m80 = sma(close, 20), sma(close, 50), sma(close, 80)
+        values = [m20.iloc[-1], m20.iloc[-2], m50.iloc[-1], m50.iloc[-2], m80.iloc[-1], m80.iloc[-2]]
+        if not all(_finite(v) for v in values):
+            return False, f"{name}: sem dados suficientes"
+        if name.endswith("ascendentes"):
+            passed = m20.iloc[-1] > m20.iloc[-2] and m50.iloc[-1] > m50.iloc[-2] and m80.iloc[-1] > m80.iloc[-2]
+        else:
+            passed = m20.iloc[-1] < m20.iloc[-2] and m50.iloc[-1] < m50.iloc[-2] and m80.iloc[-1] < m80.iloc[-2]
         return bool(passed), name
     return False, f"Filtro desconhecido: {name}"
 
