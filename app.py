@@ -347,7 +347,7 @@ if rules is None:
     rules = []
 
     for i in range(int(rule_count)):
-        with st.expander(f"Condição {i + 1}", expanded=True):
+        with st.expander(f"Condição {i + 1}", expanded=False):
             if i > 0:
                 connector = st.radio(
                     "Conector com a condição anterior",
