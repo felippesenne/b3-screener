@@ -6,20 +6,27 @@ on:
       - backtest-v1
       - backtest-v1-core
       - backtest-v1-orders
+      - backtest-v1-ui
     paths:
       - "backtest/**"
+      - "pages/**"
       - "tests_backtest_engine.py"
       - "tests_backtest_signals.py"
       - "tests_backtest_cli.py"
       - "tests_backtest_orders.py"
+      - "tests_backtest_ui_helpers.py"
+      - "tests_backtest_streamlit_smoke.py"
       - ".github/workflows/test-backtest.yml"
   pull_request:
     paths:
       - "backtest/**"
+      - "pages/**"
       - "tests_backtest_engine.py"
       - "tests_backtest_signals.py"
       - "tests_backtest_cli.py"
       - "tests_backtest_orders.py"
+      - "tests_backtest_ui_helpers.py"
+      - "tests_backtest_streamlit_smoke.py"
       - ".github/workflows/test-backtest.yml"
 
 jobs:
@@ -31,8 +38,10 @@ jobs:
         with:
           python-version: "3.11"
       - run: pip install -r requirements.txt
-      - run: python -m py_compile backtest/__init__.py backtest/engine.py backtest/metrics.py backtest/signals.py backtest/order_engine.py backtest/setup_orders.py backtest/cli.py
+      - run: python -m py_compile backtest/__init__.py backtest/engine.py backtest/metrics.py backtest/signals.py backtest/order_engine.py backtest/setup_orders.py backtest/ui_helpers.py backtest/cli.py pages/1_Backtesting.py
       - run: python tests_backtest_engine.py
       - run: python tests_backtest_signals.py
       - run: python tests_backtest_cli.py
       - run: python tests_backtest_orders.py
+      - run: python tests_backtest_ui_helpers.py
+      - run: python tests_backtest_streamlit_smoke.py
