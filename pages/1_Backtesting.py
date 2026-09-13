@@ -127,11 +127,12 @@ with st.sidebar:
     setup_label = st.selectbox("Estratégia", list(SETUP_LABELS.keys()))
     setup_id = SETUP_LABELS[setup_label]
     side = setup_side(setup_id)
+    is_landry_classic = setup_id.startswith("landry_classic_")
     st.caption(f"Direção: {'Compra / Long' if side == 'long' else 'Venda / Short'}")
 
     timeframe = st.selectbox("Timeframe", ["Diário", "Semanal", "Mensal"], index=0)
     period = st.selectbox("Histórico", ["1y", "2y", "5y", "10y", "max"], index=2)
-    exit_label = st.selectbox("Saída", EXIT_LABELS, index=0)
+    exit_label = st.selectbox("Saída adicional", EXIT_LABELS, index=0)
 
     st.divider()
     st.subheader("Capital e execução")
@@ -140,17 +141,66 @@ with st.sidebar:
     commission_bps = st.number_input("Custos totais por ordem (bps)", min_value=0.0, value=0.0, step=0.5)
     slippage_bps = st.number_input("Slippage (bps)", min_value=0.0, value=0.0, step=0.5)
 
-    use_target = st.toggle("Usar alvo percentual", value=False)
-    target_pct = None
-    if use_target:
-        target_value = st.number_input("Alvo (%)", min_value=0.1, value=10.0, step=0.5)
-        target_pct = float(target_value) / 100.0
-    st.caption("O stop de proteção é o stop técnico definido pelo próprio setup.")
+    if is_landry_classic:
+        target_pct = None
+        st.caption("Gestão Landry clássica: 50% em 1R; restante em breakeven e trailing stop.")
+    else:
+        use_target = st.toggle("Usar alvo percentual", value=False)
+        target_pct = None
+        if use_target:
+            target_value = st.number_input("Alvo (%)", min_value=0.1, value=10.0, step=0.5)
+            target_pct = float(target_value) / 100.0
+        st.caption("O stop de proteção é o stop técnico definido pelo próprio setup.")
+
+    landry_valid_bars = 1
+    bowtie_transition_bars = 4
+    landry_min_pullback_bars = 3
+    landry_max_pullback_bars = 7
+    landry_trend_lookback = 20
+    landry_trailing_bars = 2
 
     with st.expander("Parâmetros avançados"):
         tick_size = st.number_input("Tick do gatilho (R$)", min_value=0.0, value=0.01, step=0.01, format="%.2f")
-        landry_valid_bars = st.number_input("Landry Simple — validade do gatilho (candles)", min_value=1, max_value=20, value=1)
-        bowtie_transition_bars = st.number_input("Bow Tie — janela da transição (candles)", min_value=1, max_value=10, value=4)
+        if setup_id.startswith("landry_simple_"):
+            landry_valid_bars = st.number_input(
+                "Landry Simple simplificado — validade do gatilho (candles)",
+                min_value=1,
+                max_value=20,
+                value=1,
+            )
+        if is_landry_classic:
+            landry_min_pullback_bars = st.number_input(
+                "Landry clássico — mínimo de barras do pullback",
+                min_value=2,
+                max_value=6,
+                value=3,
+            )
+            landry_max_pullback_bars = st.number_input(
+                "Landry clássico — máximo de barras do pullback",
+                min_value=int(landry_min_pullback_bars),
+                max_value=12,
+                value=max(7, int(landry_min_pullback_bars)),
+            )
+            landry_trend_lookback = st.number_input(
+                "Landry clássico — janela da nova máxima/mínima",
+                min_value=5,
+                max_value=100,
+                value=20,
+            )
+            landry_trailing_bars = st.number_input(
+                "Landry clássico — trailing do runner (barras)",
+                min_value=1,
+                max_value=10,
+                value=2,
+                help="Após 1R, usa apenas barras já encerradas. O padrão de 2 barras é uma convenção mecânica do backtest.",
+            )
+        if setup_id.startswith("bowtie_"):
+            bowtie_transition_bars = st.number_input(
+                "Bow Tie — janela da transição (candles)",
+                min_value=1,
+                max_value=10,
+                value=4,
+            )
         same_bar_label = st.selectbox(
             "Ambiguidade intrabar",
             ["Conservador (cancelamento/stop prevalece)", "Gatilho prevalece"],
@@ -195,6 +245,15 @@ st.info(
     "podem introduzir survivorship bias em testes históricos."
 )
 
+if is_landry_classic:
+    st.info(
+        "Dave Landry — Simple Pullback Clássico: exige tendência por MME20/MME50 na direção da operação e "
+        "uma nova máxima/mínima na janela escolhida; procura 3–7 máximas descendentes (compra) ou mínimas "
+        "ascendentes (venda); atualiza o gatilho a cada barra do pullback; usa stop no extremo da correção. "
+        "Após a entrada, realiza 50% em 1R, leva o runner ao breakeven e então usa trailing pelas barras anteriores. "
+        "O trailing mecânico é uma convenção explícita do backtest para tornar reproduzível uma gestão que Landry trata com discricionariedade."
+    )
+
 if run:
     if not tickers:
         st.error("Selecione pelo menos um ticker.")
@@ -213,6 +272,10 @@ if run:
         landry_valid_bars=int(landry_valid_bars),
         bowtie_transition_bars=int(bowtie_transition_bars),
         same_bar_policy=same_bar_policy,
+        landry_min_pullback_bars=int(landry_min_pullback_bars),
+        landry_max_pullback_bars=int(landry_max_pullback_bars),
+        landry_trend_lookback=int(landry_trend_lookback),
+        landry_trailing_bars=int(landry_trailing_bars),
     )
 
     if mode == "Ativo individual":
