@@ -32,30 +32,13 @@ OPERATORS = {
     "Descendente": "falling",
 }
 
-# Presets principais + famílias estruturais solicitadas.
+# Menu enxuto: somente os presets solicitados.
 PRESETS = [
     "Strategy Builder",
-    "IFR2 — Retorno à média em tendência de alta",
     "Larry Williams — Setup 9.1 Compra",
     "Larry Williams — Setup 9.1 Venda",
-    "Larry Williams — Setup 9.2 Compra",
-    "Larry Williams — Setup 9.2 Venda",
-    "Larry Williams — 9.1 + Estrutura Compra",
-    "Larry Williams — 9.1 + Estrutura Venda",
-    "Dave Landry — Compra",
-    "Dave Landry — Venda",
-    "Price Action — Pivô de Alta Simples",
-    "Price Action — Pivô de Baixa Simples",
     "Price Action — Pivô 1-2-3 Alta",
     "Price Action — Pivô 1-2-3 Baixa",
-    "Price Action — Fundo Duplo",
-    "Price Action — Topo Duplo",
-    "Price Action — OCO Invertido (Compra)",
-    "Price Action — OCO (Venda)",
-    "Divergência IFR14 + Estrutura — Compra",
-    "Divergência IFR14 + Estrutura — Venda",
-    "Price Action — Pivô de Alta / Saída de Consolidação",
-    "Price Action — Pivô de Baixa / Saída de Consolidação",
 ]
 
 _EDITOR_OCCURRENCES = {}
