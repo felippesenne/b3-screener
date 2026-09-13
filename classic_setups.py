@@ -46,9 +46,6 @@ SPECIAL_SETUP_DESCRIPTIONS = {
 
 CONTEXT_FILTERS = [
     "Éden dos Traders — Compra", "Éden dos Traders — Venda",
-    "MME80 ascendente", "MME80 descendente",
-    "Stormer MME49 — Compra", "Stormer MME49 — Venda",
-    "Preço acima da MME200", "Preço abaixo da MME200",
     "MMS20/50/80 ascendentes", "MMS20/50/80 descendentes",
     "Inside Bar atual",
 ]
