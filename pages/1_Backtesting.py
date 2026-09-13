@@ -7,6 +7,7 @@ import pandas as pd
 import streamlit as st
 
 from bdr_universe import BDRS
+from backtest.trade_chart import build_operational_chart_frame, operational_chart_spec
 from backtest.ui_helpers import (
     EXIT_LABELS,
     SETUP_LABELS,
@@ -67,6 +68,15 @@ def render_single(ticker: str, df: pd.DataFrame, orders: pd.DataFrame, result, c
     c8.metric("Payoff", fmt_metric(metrics.get("payoff")))
     c9.metric("Expectância", f"R$ {fmt_metric(metrics.get('expectancy'))}")
     c10.metric("Equity final", f"R$ {fmt_metric(metrics.get('final_equity'))}")
+
+    st.markdown("#### Gráfico operacional — entradas, saídas e stops")
+    chart_frame = build_operational_chart_frame(df, result.trades, result.equity_curve)
+    st.vega_lite_chart(chart_frame, operational_chart_spec(), use_container_width=True)
+    st.caption(
+        "▲ Entrada executada · ▼ Saída final · ◆ Saída parcial · ✕ Stop acionado · "
+        "■ Stop inicial · linha tracejada = stop vigente. Nos setups com trailing registrado, "
+        "a linha acompanha o stop efetivamente usado pelo motor do backtest."
+    )
 
     strategy = result.equity_curve["Equity"].astype(float) / float(capital) * 100.0
     buy_hold = df["Close"].astype(float) / float(df["Close"].iloc[0]) * 100.0
