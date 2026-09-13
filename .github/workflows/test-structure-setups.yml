@@ -1,15 +1,28 @@
-name: Test structural setups
+name: Test strategy setups
 
 on:
   push:
     branches:
-      - add-structure-pattern-setups
-  pull_request:
+      - main
     paths:
+      - "momentum_205080_setups.py"
       - "structure_setups.py"
       - "classic_setups.py"
+      - "scanner.py"
       - "app.py"
       - "tests_structure_setups.py"
+      - "tests_momentum_205080.py"
+      - ".github/workflows/test-structure-setups.yml"
+  pull_request:
+    paths:
+      - "momentum_205080_setups.py"
+      - "structure_setups.py"
+      - "classic_setups.py"
+      - "scanner.py"
+      - "app.py"
+      - "tests_structure_setups.py"
+      - "tests_momentum_205080.py"
+      - ".github/workflows/test-structure-setups.yml"
 
 jobs:
   test:
@@ -20,5 +33,6 @@ jobs:
         with:
           python-version: "3.11"
       - run: pip install -r requirements.txt
-      - run: python -m py_compile app.py classic_setups.py scanner.py structure_setups.py
+      - run: python -m py_compile app.py classic_setups.py scanner.py structure_setups.py momentum_205080_setups.py
       - run: python tests_structure_setups.py
+      - run: python tests_momentum_205080.py
