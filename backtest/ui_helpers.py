@@ -6,6 +6,8 @@ import pandas as pd
 
 from indicators import resample_ohlcv
 from .engine import BacktestConfig, BacktestResult
+from .landry_adjusted_engine import run_landry_adjusted_backtest
+from .landry_adjusted_setup import compile_landry_adjusted_orders
 from .landry_classic_engine import run_landry_classic_backtest
 from .landry_classic_setup import compile_landry_classic_orders
 from .order_engine import run_order_backtest
@@ -20,6 +22,7 @@ SETUP_LABELS = {
     "PFR — Venda": "pfr_sell",
     "Setup 1-2-3 — Compra": "setup_123_buy",
     "Setup 1-2-3 — Venda": "setup_123_sell",
+    "Dave Landry ajustado de compra": "landry_adjusted_buy",
     "Dave Landry — Simple Pullback Clássico Compra": "landry_classic_buy",
     "Dave Landry — Simple Pullback Clássico Venda": "landry_classic_sell",
     "Dave Landry Simple — Compra (simplificado)": "landry_simple_buy",
@@ -107,7 +110,11 @@ def run_setup_backtest_from_history(
     if len(df) < 3:
         raise ValueError("Histórico insuficiente para backtest.")
 
-    if setup_id.startswith("landry_classic_"):
+    is_adjusted_landry = setup_id == "landry_adjusted_buy"
+
+    if is_adjusted_landry:
+        orders = compile_landry_adjusted_orders(df)
+    elif setup_id.startswith("landry_classic_"):
         side = setup_side(setup_id)
         rows = compile_landry_classic_orders(
             df,
@@ -128,18 +135,32 @@ def run_setup_backtest_from_history(
             bowtie_transition_bars=bowtie_transition_bars,
         )
 
-    exit_rules = build_exit_rules(exit_label, setup_id)
-    exit_signal = compile_rules_signal(df, exit_rules) if exit_rules else None
+    # O Dave Landry ajustado tem saída exclusivamente pelo Stop ATR, conforme
+    # especificação. Alvos e saídas adicionais da UI são ignorados nesse setup.
+    if is_adjusted_landry:
+        exit_signal = None
+    else:
+        exit_rules = build_exit_rules(exit_label, setup_id)
+        exit_signal = compile_rules_signal(df, exit_rules) if exit_rules else None
+
     config = BacktestConfig(
         initial_capital=float(capital),
         position_size_pct=float(position_size_pct),
         commission_bps=float(commission_bps),
         slippage_bps=float(slippage_bps),
-        take_profit_pct=None if setup_id.startswith("landry_classic_") else take_profit_pct,
+        take_profit_pct=None if (setup_id.startswith("landry_classic_") or is_adjusted_landry) else take_profit_pct,
         periods_per_year=PERIODS_PER_YEAR[timeframe],
     )
 
-    if setup_id.startswith("landry_classic_"):
+    if is_adjusted_landry:
+        result = run_landry_adjusted_backtest(
+            df,
+            orders=orders,
+            config=config,
+            atr_period=20,
+            atr_multiplier=2.0,
+        )
+    elif setup_id.startswith("landry_classic_"):
         result = run_landry_classic_backtest(
             df,
             orders=orders,
