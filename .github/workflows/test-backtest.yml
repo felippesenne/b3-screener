@@ -8,11 +8,13 @@ on:
     paths:
       - "backtest/**"
       - "tests_backtest_engine.py"
+      - "tests_backtest_signals.py"
       - ".github/workflows/test-backtest.yml"
   pull_request:
     paths:
       - "backtest/**"
       - "tests_backtest_engine.py"
+      - "tests_backtest_signals.py"
       - ".github/workflows/test-backtest.yml"
 
 jobs:
@@ -24,5 +26,6 @@ jobs:
         with:
           python-version: "3.11"
       - run: pip install -r requirements.txt
-      - run: python -m py_compile backtest/__init__.py backtest/engine.py backtest/metrics.py
+      - run: python -m py_compile backtest/__init__.py backtest/engine.py backtest/metrics.py backtest/signals.py
       - run: python tests_backtest_engine.py
+      - run: python tests_backtest_signals.py
