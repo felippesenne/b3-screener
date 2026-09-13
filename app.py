@@ -12,6 +12,11 @@ backtesting_page = st.Page(
     title="Backtesting",
     icon="🧪",
 )
+portfolio_page = st.Page(
+    "pages/2_Carteira.py",
+    title="Carteira",
+    icon="💼",
+)
 
-navigation = st.navigation([screener_page, backtesting_page])
+navigation = st.navigation([screener_page, backtesting_page, portfolio_page])
 navigation.run()
