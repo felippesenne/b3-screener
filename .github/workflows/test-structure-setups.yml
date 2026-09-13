@@ -12,6 +12,7 @@ on:
       - "app.py"
       - "tests_structure_setups.py"
       - "tests_momentum_205080.py"
+      - "tests_landry_simple.py"
       - ".github/workflows/test-structure-setups.yml"
   pull_request:
     paths:
@@ -22,6 +23,7 @@ on:
       - "app.py"
       - "tests_structure_setups.py"
       - "tests_momentum_205080.py"
+      - "tests_landry_simple.py"
       - ".github/workflows/test-structure-setups.yml"
 
 jobs:
@@ -36,3 +38,4 @@ jobs:
       - run: python -m py_compile app.py classic_setups.py scanner.py structure_setups.py momentum_205080_setups.py
       - run: python tests_structure_setups.py
       - run: python tests_momentum_205080.py
+      - run: python tests_landry_simple.py
