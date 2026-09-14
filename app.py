@@ -17,6 +17,11 @@ portfolio_page = st.Page(
     title="Carteira",
     icon="💼",
 )
+eod_page = st.Page(
+    "pages/3_Checklist_EOD.py",
+    title="Checklist EOD",
+    icon="✅",
+)
 
-navigation = st.navigation([screener_page, backtesting_page, portfolio_page])
+navigation = st.navigation([screener_page, eod_page, backtesting_page, portfolio_page])
 navigation.run()

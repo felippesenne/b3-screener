@@ -1,0 +1,29 @@
+name: Test Checklist EOD
+
+on:
+  push:
+    paths:
+      - "eod_checklist.py"
+      - "pages/3_Checklist_EOD.py"
+      - "tests_eod_checklist.py"
+      - "app.py"
+      - ".github/workflows/test-eod-checklist.yml"
+  pull_request:
+    paths:
+      - "eod_checklist.py"
+      - "pages/3_Checklist_EOD.py"
+      - "tests_eod_checklist.py"
+      - "app.py"
+      - ".github/workflows/test-eod-checklist.yml"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -r requirements.txt
+      - run: python -m py_compile eod_checklist.py pages/3_Checklist_EOD.py app.py
+      - run: python tests_eod_checklist.py
