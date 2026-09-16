@@ -37,8 +37,6 @@ PRESETS = [
     "Strategy Builder",
     "Larry Williams — Setup 9.1 Compra",
     "Larry Williams — Setup 9.1 Venda",
-    "Price Action — Pivô 1-2-3 Alta",
-    "Price Action — Pivô 1-2-3 Baixa",
     "Dave Landry — Compra",
     "Dave Landry — Venda",
 ]
