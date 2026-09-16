@@ -1,0 +1,35 @@
+name: Remove pivot presets
+
+on:
+  push:
+    paths:
+      - ".github/workflows/remove-pivot-presets.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  edit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Remove presets
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('pages/Screener.py')
+          text = p.read_text(encoding='utf-8')
+          text = text.replace('    "Price Action — Pivô 1-2-3 Alta",\n', '')
+          text = text.replace('    "Price Action — Pivô 1-2-3 Baixa",\n', '')
+          p.write_text(text, encoding='utf-8')
+          Path('.github/workflows/remove-pivot-presets.yml').unlink()
+          PY
+      - name: Commit change
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add pages/Screener.py .github/workflows/remove-pivot-presets.yml
+          git commit -m "Remove Price Action 1-2-3 presets"
+          git push origin main
