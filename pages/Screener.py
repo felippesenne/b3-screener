@@ -14,7 +14,7 @@ st.set_page_config(page_title="B3 Strategy Builder", page_icon="📈", layout="w
 
 MARKET_TZ = ZoneInfo("America/Sao_Paulo")
 MARKET_CLOSE_CUTOFF = time(18, 30)
-MARKET_REFERENCE_TICKER = "PETR4"
+MARKET_REFERENCE_TICKERS = ("PETR4", "VALE3", "ITUB4")
 
 INDICATORS = [
     "Preço", "IFR (RSI)", "MME (EMA)", "MMS (SMA)", "MACD",
@@ -76,19 +76,62 @@ def _expected_latest_closed_session(now: datetime):
 @st.cache_data(ttl=5 * 60, show_spinner=False)
 def market_data_snapshot() -> dict:
     provider = YahooFinanceProvider()
-    history = provider.get_history(MARKET_REFERENCE_TICKER, period="1mo")
-    latest_date = history.index.max().date()
+    histories, errors = provider.get_histories(list(MARKET_REFERENCE_TICKERS), period="1mo", chunk_size=3)
     checked_at = datetime.now(MARKET_TZ)
     expected_date = _expected_latest_closed_session(checked_at)
+
+    references = {}
+    available_dates = []
+    for ticker in MARKET_REFERENCE_TICKERS:
+        history = histories.get(ticker)
+        if history is None or history.empty:
+            references[ticker] = {
+                "latest_date": None,
+                "error": errors.get(ticker, "Sem histórico disponível."),
+            }
+            continue
+        latest_date = history.index.max().date()
+        references[ticker] = {"latest_date": latest_date, "error": None}
+        available_dates.append(latest_date)
+
+    common_date = min(available_dates) if len(available_dates) == len(MARKET_REFERENCE_TICKERS) else None
+    newest_date = max(available_dates) if available_dates else None
+    all_current = bool(common_date and common_date >= expected_date)
+    mixed_dates = len(set(available_dates)) > 1 if available_dates else False
+
     return {
-        "latest_date": latest_date,
+        "references": references,
+        "common_date": common_date,
+        "newest_date": newest_date,
         "expected_date": expected_date,
         "checked_at": checked_at,
-        "is_current": latest_date >= expected_date,
+        "is_current": all_current,
+        "mixed_dates": mixed_dates,
     }
 
 
+def _format_reference_dates(snapshot: dict) -> str:
+    parts = []
+    for ticker in MARKET_REFERENCE_TICKERS:
+        item = snapshot["references"].get(ticker, {})
+        latest_date = item.get("latest_date")
+        if latest_date:
+            parts.append(f"{ticker}: **{latest_date.strftime('%d/%m/%Y')}**")
+        else:
+            parts.append(f"{ticker}: **indisponível**")
+    return " · ".join(parts)
+
+
 def render_market_data_status(compact: bool = False) -> None:
+    if not compact:
+        if st.button(
+            "Forçar atualização do status do Yahoo Finance",
+            key="force_market_status_refresh",
+            help="Limpa o cache de 5 minutos do status e consulta novamente os três ativos de referência.",
+        ):
+            market_data_snapshot.clear()
+            st.rerun()
+
     try:
         snapshot = market_data_snapshot()
     except Exception as exc:
@@ -98,29 +141,51 @@ def render_market_data_status(compact: bool = False) -> None:
             st.warning("Não foi possível verificar agora a data do último pregão disponível no Yahoo Finance.")
         return
 
-    latest = snapshot["latest_date"].strftime("%d/%m/%Y")
     expected = snapshot["expected_date"].strftime("%d/%m/%Y")
     checked = snapshot["checked_at"].strftime("%H:%M")
+    reference_dates = _format_reference_dates(snapshot)
+    common_date = snapshot["common_date"]
+    common_text = common_date.strftime("%d/%m/%Y") if common_date else "indisponível"
 
     if compact:
-        status = "atualizado" if snapshot["is_current"] else f"aguardando referência de {expected}"
+        if snapshot["is_current"]:
+            status = f"referências atualizadas até {common_text}"
+        elif snapshot["mixed_dates"]:
+            status = f"datas divergentes; referência comum {common_text}"
+        else:
+            status = f"aguardando referência de {expected}"
         st.caption(
-            f"Último pregão diário disponível para análise: **{latest}** · {status} · "
-            f"referência {MARKET_REFERENCE_TICKER} · verificado às {checked} BRT."
+            f"Yahoo Finance: {status} · {reference_dates} · verificado às {checked} BRT."
         )
         return
 
     st.subheader("Atualização dos dados")
     if snapshot["is_current"]:
-        st.success(f"Último pregão diário disponível para análise: {latest}")
-    else:
+        st.success(f"Os três ativos de referência já possuem o pregão de {common_text}.")
+    elif snapshot["mixed_dates"]:
         st.warning(
-            f"Último pregão diário disponível para análise: {latest}. "
-            f"A referência esperada após o fechamento é {expected}; o Yahoo Finance pode ainda estar atualizando."
+            f"Os ativos de referência estão em datas diferentes. A última data comum segura é {common_text}; "
+            f"a referência esperada é {expected}."
         )
+    elif common_date:
+        st.warning(
+            f"Último pregão comum disponível nas três referências: {common_text}. "
+            f"A referência esperada é {expected}; o Yahoo Finance pode ainda estar atualizando."
+        )
+    else:
+        st.warning("Não foi possível obter histórico de todos os ativos de referência.")
+
+    st.markdown(reference_dates)
+    failed = [
+        f"{ticker}: {item.get('error')}"
+        for ticker, item in snapshot["references"].items()
+        if item.get("error")
+    ]
+    if failed:
+        st.caption("Falhas: " + " | ".join(failed))
     st.caption(
-        f"Referência: {MARKET_REFERENCE_TICKER} · Yahoo Finance · verificado às {checked} BRT. "
-        "O status é estimado por dias úteis e horário de fechamento; feriados e sessões especiais da B3 podem alterar a referência."
+        f"Referências: {', '.join(MARKET_REFERENCE_TICKERS)} · Yahoo Finance via yfinance · verificado às {checked} BRT. "
+        "O status só é considerado atualizado quando as três referências alcançam o pregão esperado."
     )
 
 
