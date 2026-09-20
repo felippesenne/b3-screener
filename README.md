@@ -69,17 +69,43 @@ Exemplos de combinações:
 - **Ativos do Ibovespa:** carteira configurada no app.
 - **Meus 23 ativos:** universo pessoal originalmente usado no screener.
 
-A fonte externa usada para descobrir o universo amplo não fornece os preços ao screener. As séries OHLCV continuam vindo do Yahoo Finance.
+A lista do universo amplo é independente das fontes de preços. Cada ativo tem sua série e data verificadas antes dos cálculos.
 
 ## Fonte de dados de preço
 
-O app usa `yfinance` / Yahoo Finance diretamente.
+O **Screener e o Checklist EOD** usam **brapi v2 como fonte principal**, com **Yahoo Finance/yfinance como reserva automática por ativo**. O Backtesting e a Carteira mantêm seus provedores existentes.
 
-Cada vez que o usuário roda o screener, o sistema consulta o histórico disponível no Yahoo Finance, calcula os indicadores e aplica a estratégia e os filtros de contexto. Universos amplos usam download em lotes para reduzir o tempo de consulta.
+- Cada execução consulta dados novos. O Yahoo só recebe os ativos ausentes, inválidos, com histórico curto ou defasados na fonte principal.
+- Um ativo só entra no cálculo quando tem OHLCV válido até o último pregão encerrado esperado. Se ambas as fontes falham, ele aparece na auditoria de dados e fica fora dos sinais.
+- O calendário `BVMF` de `exchange-calendars` considera feriados e finais de semana. Antes de **18h30 de Brasília**, o candle diário do dia é excluído. Esse é um corte conservador de disponibilidade, não uma afirmação sobre o horário oficial de fechamento.
+- Fonte, data efetiva do último pregão e motivo da falha aparecem por ativo. O CSV dos resultados inclui a fonte e a data diária, inclusive em consultas semanais/mensais.
+- As séries das fontes não são concatenadas. São usados os campos OHLC do provedor escolhido, sem substituir apenas o fechamento por `adjustedClose`. Diferenças de ajustes do provedor podem alterar os indicadores quando há troca de fonte.
+- Respostas 401, 403, 429, falhas do servidor e timeouts suspendem novas chamadas à brapi naquela execução. As chamadas têm timeout; o Yahoo usa concorrência limitada. Não há retentativa em massa do mesmo lote.
+- Se o plano brapi encurtar a janela solicitada, ou a série começar mais de 14 dias após o início esperado, a fonte é rejeitada e a reserva é tentada. Ativos recém-listados também podem exigir uma janela menor. Essa verificação não garante continuidade de todas as sessões de um ativo ilíquido.
+
+### Configurar a brapi
+
+Configure `BRAPI_TOKEN` nos **Secrets** do Streamlit Community Cloud (Settings → Secrets) ou em variável de ambiente:
+
+```toml
+BRAPI_TOKEN = "seu_token"
+```
+
+Também é possível usar o campo **Fonte de dados → Token brapi** na lateral do app. Nesse caso, ele permanece apenas na sessão. Não coloque o token no código, no GitHub ou em URLs. O token é enviado à brapi pelo cabeçalho `Authorization`.
+
+Sem token, somente **PETR4, VALE3, ITUB4 e MGLU3** têm acesso de demonstração à brapi. Os demais dependem da reserva Yahoo e podem continuar indisponíveis enquanto o Yahoo limitar as consultas. Configure um token e um plano com cobertura e histórico suficientes para o universo selecionado. A integração não contrata planos automaticamente.
+
+Fontes da implementação: [histórico brapi v2](https://brapi.dev/docs/acoes/historico), [acesso de demonstração brapi](https://brapi.dev/docs/acoes), [calendário oficial da B3](https://www.b3.com.br/pt_br/solucoes/plataformas/puma-trading-system/para-participantes-e-traders/calendario-de-negociacao/feriados/) e [exchange-calendars](https://github.com/gerrymanoim/exchange_calendars).
 
 Não há banco PostgreSQL nem rotina agendada nesta versão.
 
-O Yahoo Finance é adequado para prototipação e estudos, mas não é uma fonte oficial da B3 e não oferece SLA de disponibilidade.
+### Verificação
+
+```bash
+python -m unittest tests_market_data tests_market_data_ui tests_navigation_smoke tests_eod_checklist tests_backtest_streamlit_smoke
+```
+
+Os testes usam respostas controladas para falhas, dados defasados, feriados e candles em formação; não exigem token nem dependem das cotações ao vivo.
 
 ## Rodar localmente
 

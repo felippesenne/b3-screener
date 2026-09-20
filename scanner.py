@@ -393,7 +393,12 @@ def scan_universe(
             tf = resample_ohlcv(raw, timeframe)
             if len(tf) < 3:
                 raise ValueError("Histórico insuficiente para cálculo.")
-            rows.append(evaluate_latest(ticker, tf, rules, context_filters=context_filters))
+            row = evaluate_latest(ticker, tf, rules, context_filters=context_filters)
+            if raw.attrs.get("source"):
+                row["Fonte"] = raw.attrs["source"]
+                row["Último pregão"] = raw.attrs["latest_session"].strftime("%d/%m/%Y")
+                row["Dados"] = "Atualizado"
+            rows.append(row)
             errors.pop(ticker, None)
         except Exception as exc:
             errors[ticker] = str(exc)
