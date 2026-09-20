@@ -512,7 +512,11 @@ def scan_eod_universe(
                 target = _completed_resample(raw, "Semanal")
                 higher = _completed_resample(raw, "Mensal")
 
-            rows.append(evaluate_eod_latest(ticker, target, higher, scan_mode))
+            row = evaluate_eod_latest(ticker, target, higher, scan_mode)
+            if raw.attrs.get("source"):
+                row["Fonte"] = raw.attrs["source"]
+                row["Último pregão"] = raw.attrs["latest_session"].strftime("%d/%m/%Y")
+            rows.append(row)
             errors.pop(ticker, None)
         except Exception as exc:
             errors[ticker] = str(exc)

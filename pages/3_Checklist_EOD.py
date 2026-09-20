@@ -4,7 +4,8 @@ from zoneinfo import ZoneInfo
 import streamlit as st
 
 from bdr_universe import BDRS
-from data_provider import YahooFinanceProvider
+from data_provider import ResilientMarketDataProvider
+from market_data_ui import brapi_token, render_data_source_settings, render_market_data_status, render_data_audit
 from eod_checklist import scan_eod_universe
 from universes import FAVORITE_23, IBOVESPA, fetch_all_b3_tickers, universe_text
 
@@ -89,6 +90,9 @@ else:
         )
     st.caption("Fluxo: mensal = contexto → semanal = oportunidade → diário = refinamento da entrada.")
 
+render_data_source_settings()
+render_market_data_status()
+
 run = st.button("Rodar Checklist EOD", type="primary", use_container_width=True)
 
 if run:
@@ -99,7 +103,7 @@ if run:
         st.error("Informe pelo menos um ticker.")
         st.stop()
 
-    provider = YahooFinanceProvider()
+    provider = ResilientMarketDataProvider(token=brapi_token())
     with st.spinner(f"Analisando {len(tickers)} ativos..."):
         result, errors = scan_eod_universe(
             tickers,
@@ -107,6 +111,8 @@ if run:
             scan_mode=scan_mode,
             period=history_period,
         )
+
+    render_data_audit(provider)
 
     if result.empty:
         st.warning("Nenhum ativo pôde ser analisado.")
@@ -131,7 +137,7 @@ if run:
             display_cols = [
                 "Ticker", "Prioridade", "Nota", "Confluências", "Setups", "Tendência",
                 "Tendência maior", "Alinhado", "IFR2", "ADX14", "Volume x média20",
-                "Gatilho", "Stop", "Alvo técnico", "R/R", "Data",
+                "Gatilho", "Stop", "Alvo técnico", "R/R", "Data", "Fonte", "Último pregão",
             ]
             st.dataframe(filtered[display_cols], use_container_width=True, hide_index=True)
 
@@ -160,5 +166,5 @@ if run:
 
 st.divider()
 st.caption(
-    "Dados: Yahoo Finance via yfinance. O ranking é um filtro técnico de estudo, não uma recomendação de compra ou venda."
+    "Dados: brapi, com Yahoo Finance como reserva; somente ativos com o último pregão validado. O ranking é um filtro técnico de estudo, não uma recomendação de compra ou venda."
 )

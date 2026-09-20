@@ -1,0 +1,37 @@
+name: Test current market data
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'data_provider.py'
+      - 'market_sessions.py'
+      - 'market_data_ui.py'
+      - 'scanner.py'
+      - 'eod_checklist.py'
+      - 'pages/**'
+      - 'requirements.txt'
+      - 'tests_market_data*.py'
+      - '.github/workflows/test-market-data.yml'
+  pull_request:
+    paths:
+      - 'data_provider.py'
+      - 'market_sessions.py'
+      - 'market_data_ui.py'
+      - 'scanner.py'
+      - 'eod_checklist.py'
+      - 'pages/**'
+      - 'requirements.txt'
+      - 'tests_market_data*.py'
+      - '.github/workflows/test-market-data.yml'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install -r requirements.txt
+      - run: python -m unittest tests_market_data tests_market_data_ui tests_navigation_smoke tests_eod_checklist tests_backtest_streamlit_smoke
