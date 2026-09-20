@@ -1,14 +1,20 @@
+from datetime import datetime, time, timedelta
+from zoneinfo import ZoneInfo
+
 import streamlit as st
 
 from bdr_universe import BDRS
 from classic_setups import CONTEXT_FILTERS, describe_context_filters
-from data_provider import ResilientMarketDataProvider
-from market_data_ui import brapi_token, render_data_source_settings, render_market_data_status, render_data_audit
+from data_provider import YahooFinanceProvider
 from scanner import describe_strategy, scan_universe
 from strategy_images import get_preset_image_path
 from universes import FAVORITE_23, IBOVESPA, fetch_all_b3_tickers, universe_text
 
 st.set_page_config(page_title="B3 Strategy Builder", page_icon="📈", layout="wide")
+
+MARKET_TZ = ZoneInfo("America/Sao_Paulo")
+MARKET_CLOSE_CUTOFF = time(18, 30)
+MARKET_REFERENCE_TICKERS = ("PETR4", "VALE3", "ITUB4")
 
 INDICATORS = [
     "Preço", "IFR (RSI)", "MME (EMA)", "MMS (SMA)", "MACD",
@@ -47,6 +53,140 @@ VISIBLE_CONTEXT_FILTERS = [
 ]
 
 _EDITOR_OCCURRENCES = {}
+
+
+def _previous_weekday(day):
+    candidate = day - timedelta(days=1)
+    while candidate.weekday() >= 5:
+        candidate -= timedelta(days=1)
+    return candidate
+
+
+def _expected_latest_closed_session(now: datetime):
+    if now.weekday() >= 5:
+        candidate = now.date()
+        while candidate.weekday() >= 5:
+            candidate -= timedelta(days=1)
+        return candidate
+    if now.time() < MARKET_CLOSE_CUTOFF:
+        return _previous_weekday(now.date())
+    return now.date()
+
+
+@st.cache_data(ttl=5 * 60, show_spinner=False)
+def market_data_snapshot() -> dict:
+    provider = YahooFinanceProvider()
+    histories, errors = provider.get_histories(list(MARKET_REFERENCE_TICKERS), period="1mo", chunk_size=3)
+    checked_at = datetime.now(MARKET_TZ)
+    expected_date = _expected_latest_closed_session(checked_at)
+
+    references = {}
+    available_dates = []
+    for ticker in MARKET_REFERENCE_TICKERS:
+        history = histories.get(ticker)
+        if history is None or history.empty:
+            references[ticker] = {
+                "latest_date": None,
+                "error": errors.get(ticker, "Sem histórico disponível."),
+            }
+            continue
+        latest_date = history.index.max().date()
+        references[ticker] = {"latest_date": latest_date, "error": None}
+        available_dates.append(latest_date)
+
+    common_date = min(available_dates) if len(available_dates) == len(MARKET_REFERENCE_TICKERS) else None
+    newest_date = max(available_dates) if available_dates else None
+    all_current = bool(common_date and common_date >= expected_date)
+    mixed_dates = len(set(available_dates)) > 1 if available_dates else False
+
+    return {
+        "references": references,
+        "common_date": common_date,
+        "newest_date": newest_date,
+        "expected_date": expected_date,
+        "checked_at": checked_at,
+        "is_current": all_current,
+        "mixed_dates": mixed_dates,
+    }
+
+
+def _format_reference_dates(snapshot: dict) -> str:
+    parts = []
+    for ticker in MARKET_REFERENCE_TICKERS:
+        item = snapshot["references"].get(ticker, {})
+        latest_date = item.get("latest_date")
+        if latest_date:
+            parts.append(f"{ticker}: **{latest_date.strftime('%d/%m/%Y')}**")
+        else:
+            parts.append(f"{ticker}: **indisponível**")
+    return " · ".join(parts)
+
+
+def render_market_data_status(compact: bool = False) -> None:
+    if not compact:
+        if st.button(
+            "Forçar atualização do status do Yahoo Finance",
+            key="force_market_status_refresh",
+            help="Limpa o cache de 5 minutos do status e consulta novamente os três ativos de referência.",
+        ):
+            market_data_snapshot.clear()
+            st.rerun()
+
+    try:
+        snapshot = market_data_snapshot()
+    except Exception as exc:
+        if compact:
+            st.caption(f"Não foi possível verificar o último pregão disponível agora: {exc}")
+        else:
+            st.warning("Não foi possível verificar agora a data do último pregão disponível no Yahoo Finance.")
+        return
+
+    expected = snapshot["expected_date"].strftime("%d/%m/%Y")
+    checked = snapshot["checked_at"].strftime("%H:%M")
+    reference_dates = _format_reference_dates(snapshot)
+    common_date = snapshot["common_date"]
+    common_text = common_date.strftime("%d/%m/%Y") if common_date else "indisponível"
+
+    if compact:
+        if snapshot["is_current"]:
+            status = f"referências atualizadas até {common_text}"
+        elif snapshot["mixed_dates"]:
+            status = f"datas divergentes; referência comum {common_text}"
+        else:
+            status = f"aguardando referência de {expected}"
+        st.caption(
+            f"Yahoo Finance: {status} · {reference_dates} · verificado às {checked} BRT."
+        )
+        return
+
+    st.subheader("Atualização dos dados")
+    if snapshot["is_current"]:
+        st.success(f"Os três ativos de referência já possuem o pregão de {common_text}.")
+    elif snapshot["mixed_dates"]:
+        st.warning(
+            f"Os ativos de referência estão em datas diferentes. A última data comum segura é {common_text}; "
+            f"a referência esperada é {expected}."
+        )
+    elif common_date:
+        st.warning(
+            f"Último pregão comum disponível nas três referências: {common_text}. "
+            f"A referência esperada é {expected}; o Yahoo Finance pode ainda estar atualizando."
+        )
+    else:
+        st.warning("Não foi possível obter histórico de todos os ativos de referência.")
+
+    st.markdown(reference_dates)
+    failed = [
+        f"{ticker}: {item.get('error')}"
+        for ticker, item in snapshot["references"].items()
+        if item.get("error")
+    ]
+    if failed:
+        st.caption("Falhas: " + " | ".join(failed))
+    st.caption(
+        f"Referências: {', '.join(MARKET_REFERENCE_TICKERS)} · Yahoo Finance via yfinance · verificado às {checked} BRT. "
+        "O status só é considerado atualizado quando as três referências alcançam o pregão esperado."
+    )
 
 
 @st.cache_data(ttl=24 * 60 * 60, show_spinner=False)
@@ -244,7 +384,7 @@ with st.sidebar:
             st.session_state["_loaded_universe"] = universe_name
         st.caption(f"{len(selected_tickers)} ativos carregados. A lista abaixo continua editável.")
         if universe_name == "Todos os ativos da B3":
-            st.caption("A lista ampla é atualizada automaticamente; cada ativo tem sua fonte e data verificadas.")
+            st.caption("A lista ampla é atualizada automaticamente; os preços continuam vindo do Yahoo Finance.")
     else:
         st.error("Não foi possível carregar o universo completo da B3 agora.")
         st.caption(universe_error or "Tente novamente em alguns instantes.")
@@ -329,7 +469,6 @@ st.code(describe_strategy(rules), language=None)
 if context_filters:
     st.markdown(f"**Filtro de contexto:** {describe_context_filters(context_filters)}")
 
-render_data_source_settings()
 render_market_data_status()
 run = st.button("Rodar screener", type="primary", use_container_width=True)
 
@@ -340,9 +479,9 @@ if run:
         st.error("Informe pelo menos um ticker.")
         st.stop()
     if len(tickers) > 150:
-        st.info(f"Universo amplo selecionado: {len(tickers)} ativos. A consulta às fontes pode levar mais tempo.")
+        st.info(f"Universo amplo selecionado: {len(tickers)} ativos. A consulta ao Yahoo Finance pode levar mais tempo.")
 
-    provider = ResilientMarketDataProvider(token=brapi_token())
+    provider = YahooFinanceProvider()
     with st.spinner(f"Analisando {len(tickers)} ativos..."):
         result, errors = scan_universe(
             tickers,
@@ -352,8 +491,6 @@ if run:
             rules,
             context_filters=context_filters,
         )
-
-    render_data_audit(provider)
 
     if result.empty:
         st.warning("Nenhum ativo pôde ser analisado.")
@@ -386,4 +523,5 @@ if run:
                 st.write(f"**{ticker}:** {msg}")
 
 st.divider()
-st.caption("Dados de preço: brapi, com Yahoo Finance como reserva. Cada execução faz uma nova consulta; séries de fontes diferentes não são misturadas.")
+render_market_data_status(compact=True)
+st.caption("Dados de preço: Yahoo Finance via yfinance. O screener consulta o histórico disponível a cada execução.")
