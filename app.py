@@ -22,6 +22,17 @@ eod_page = st.Page(
     title="Checklist EOD",
     icon="✅",
 )
+yahoo_audit_page = st.Page(
+    "pages/4_Auditoria_Yahoo.py",
+    title="Auditoria Yahoo",
+    icon="🔎",
+)
 
-navigation = st.navigation([screener_page, eod_page, backtesting_page, portfolio_page])
+navigation = st.navigation([
+    screener_page,
+    eod_page,
+    backtesting_page,
+    portfolio_page,
+    yahoo_audit_page,
+])
 navigation.run()
