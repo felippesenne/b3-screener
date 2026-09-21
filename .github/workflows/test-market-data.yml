@@ -7,22 +7,26 @@ on:
       - 'data_provider.py'
       - 'market_sessions.py'
       - 'market_data_ui.py'
+      - 'yahoo_audit.py'
       - 'scanner.py'
       - 'eod_checklist.py'
       - 'pages/**'
       - 'requirements.txt'
       - 'tests_market_data*.py'
+      - 'tests_yahoo_audit.py'
       - '.github/workflows/test-market-data.yml'
   pull_request:
     paths:
       - 'data_provider.py'
       - 'market_sessions.py'
       - 'market_data_ui.py'
+      - 'yahoo_audit.py'
       - 'scanner.py'
       - 'eod_checklist.py'
       - 'pages/**'
       - 'requirements.txt'
       - 'tests_market_data*.py'
+      - 'tests_yahoo_audit.py'
       - '.github/workflows/test-market-data.yml'
 
 jobs:
@@ -34,4 +38,4 @@ jobs:
         with:
           python-version: '3.11'
       - run: pip install -r requirements.txt
-      - run: python -m unittest tests_market_data tests_market_data_ui tests_navigation_smoke tests_eod_checklist tests_backtest_streamlit_smoke
+      - run: python -m unittest tests_market_data tests_market_data_ui tests_yahoo_audit tests_navigation_smoke tests_eod_checklist tests_backtest_streamlit_smoke
