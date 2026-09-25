@@ -1,3 +1,5 @@
+import sys
+
 import streamlit as st
 
 
@@ -35,4 +37,11 @@ navigation = st.navigation([
     portfolio_page,
     yahoo_audit_page,
 ])
+
+# O Streamlit Cloud mantém módulos Python carregados entre alguns reruns.
+# Quando universes.py e Screener.py mudam no mesmo deploy, uma versão antiga
+# de `universes` pode permanecer em sys.modules e causar ImportError para
+# constantes recém-adicionadas. Força uma importação fresca antes de abrir a página.
+sys.modules.pop("universes", None)
+
 navigation.run()
