@@ -5,12 +5,24 @@ from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 
-FAVORITE_23 = [
-    "AXIA3", "B3SA3", "BBAS3", "BBDC4", "BBSE3", "BPAC11", "CMIG4",
-    "CPFE3", "CPLE3", "CSMG3", "CXSE3", "EGIE3", "ISAE4", "ITUB4",
-    "PETR4", "PRIO3", "PSSA3", "SANB11", "SBSP3", "TAEE11", "TIMS3",
-    "VALE3", "VIVT3",
+# Universo BESST+ conforme a lista enviada pelo usuário.
+BESST_PLUS = [
+    "AXIA3", "B3SA3", "BBAS3", "BBDC4", "BBSE3", "BOVA11", "BPAC11",
+    "CMIG4", "CPFE3", "CPLE3", "CSMG3", "CXSE3", "EGIE3", "IBOV",
+    "ISAE4", "ITUB4", "IVVB11", "PETR4", "PRIO3", "PSSA3", "SANB11",
+    "SBSP3", "SMAL11", "TAEE11", "TIMS3", "VALE3", "VIVT3",
 ]
+
+
+# Carteira Atual conforme a lista enviada pelo usuário.
+CURRENT_PORTFOLIO = [
+    "CXSE3", "BITH11", "IBIT39", "LFTB11", "BBSE3", "ALOS3", "TAEE11",
+    "IBOV", "CMIG4", "ITUB4", "B3SA3", "CPFE3", "BBDC4",
+]
+
+
+# Alias mantido por compatibilidade com módulos antigos.
+FAVORITE_23 = BESST_PLUS
 
 
 BDRS = [
