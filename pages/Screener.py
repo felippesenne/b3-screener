@@ -8,7 +8,7 @@ from classic_setups import CONTEXT_FILTERS, describe_context_filters
 from data_provider import YahooFinanceProvider
 from scanner import describe_strategy, scan_universe
 from strategy_images import get_preset_image_path
-from universes import FAVORITE_23, IBOVESPA, fetch_all_b3_tickers, universe_text
+from universes import BESST_PLUS, CURRENT_PORTFOLIO, IBOVESPA, fetch_all_b3_tickers, universe_text
 
 st.set_page_config(page_title="B3 Strategy Builder", page_icon="📈", layout="wide")
 
@@ -359,7 +359,7 @@ with st.sidebar:
     st.header("Universo")
     universe_name = st.selectbox(
         "Universo predefinido",
-        ["Todos os ativos da B3", "Ativos do Ibovespa", "BDRs", "Meus 23 ativos"],
+        ["Todos os ativos da B3", "Ativos do Ibovespa", "BDRs", "BESST+", "Carteira Atual"],
         index=1,
         key="universe_preset",
     )
@@ -375,8 +375,10 @@ with st.sidebar:
         selected_tickers = IBOVESPA
     elif universe_name == "BDRs":
         selected_tickers = BDRS
+    elif universe_name == "BESST+":
+        selected_tickers = BESST_PLUS
     else:
-        selected_tickers = FAVORITE_23
+        selected_tickers = CURRENT_PORTFOLIO
 
     if selected_tickers is not None:
         if st.session_state.get("_loaded_universe") != universe_name:
