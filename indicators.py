@@ -1,8 +1,17 @@
 from __future__ import annotations
 
 import json
+from functools import lru_cache
+
+import exchange_calendars as xcals
 import numpy as np
 import pandas as pd
+
+
+# Primeira sessão disponível no calendário BVMF do exchange_calendars.
+# Usar uma âncora fixa evita que os candles 2D/3D mudem de alinhamento quando
+# o usuário troca o tamanho do histórico solicitado ao Yahoo Finance.
+BVMF_MULTI_DAY_ANCHOR = pd.Timestamp("2006-09-26")
 
 
 def ema(series: pd.Series, period: int) -> pd.Series:
@@ -55,9 +64,79 @@ def adx_components(df: pd.DataFrame, period: int = 14):
     return adx, plus_di, minus_di
 
 
+@lru_cache(maxsize=8)
+def _bvmf_session_ordinals(end_year: int) -> dict[pd.Timestamp, int]:
+    """Mapeia cada pregão B3 para um ordinal estável desde a âncora fixa."""
+    calendar = xcals.get_calendar(
+        "BVMF",
+        start=BVMF_MULTI_DAY_ANCHOR.strftime("%Y-%m-%d"),
+        end=f"{end_year + 1}-12-31",
+    )
+    sessions = calendar.sessions_in_range(BVMF_MULTI_DAY_ANCHOR, calendar.last_session)
+    return {pd.Timestamp(session).tz_localize(None): idx for idx, session in enumerate(sessions)}
+
+
+def _normalized_session_index(index: pd.Index) -> pd.DatetimeIndex:
+    sessions = pd.DatetimeIndex(index)
+    if sessions.tz is not None:
+        sessions = sessions.tz_convert("America/Sao_Paulo").tz_localize(None)
+    return sessions.normalize()
+
+
+def _resample_trading_sessions(df: pd.DataFrame, sessions_per_bar: int) -> pd.DataFrame:
+    """Agrega OHLCV por quantidade de pregões B3, nunca por dias corridos.
+
+    Os blocos são ancorados em uma sessão B3 fixa para permanecerem estáveis
+    independentemente do período de histórico baixado. O último bloco parcial é
+    preservado, reproduzindo o candle corrente ainda em formação.
+    """
+    if df.empty:
+        return df.copy()
+    if sessions_per_bar < 2:
+        raise ValueError("sessions_per_bar deve ser >= 2")
+
+    session_dates = _normalized_session_index(df.index)
+    ordinals = _bvmf_session_ordinals(int(session_dates.max().year))
+
+    session_numbers = []
+    missing = []
+    for session in session_dates:
+        number = ordinals.get(session)
+        if number is None:
+            missing.append(session.strftime("%Y-%m-%d"))
+        session_numbers.append(number)
+
+    if missing:
+        raise ValueError(
+            "Datas fora do calendário B3 ao montar timeframe multi-dia: " + ", ".join(missing[:5])
+        )
+
+    work = df[["Open", "High", "Low", "Close", "Volume"]].copy()
+    work["_session_date"] = session_dates.to_numpy()
+    work["_block"] = [int(number) // sessions_per_bar for number in session_numbers]
+
+    out = work.groupby("_block", sort=True).agg(
+        {
+            "Open": "first",
+            "High": "max",
+            "Low": "min",
+            "Close": "last",
+            "Volume": "sum",
+            "_session_date": "max",
+        }
+    )
+    out = out.set_index("_session_date")
+    out.index.name = df.index.name
+    return out[["Open", "High", "Low", "Close", "Volume"]].dropna(subset=["Close"])
+
+
 def resample_ohlcv(df: pd.DataFrame, timeframe: str) -> pd.DataFrame:
     if timeframe == "Diário":
         return df.copy()
+    if timeframe == "2 dias":
+        return _resample_trading_sessions(df, 2)
+    if timeframe == "3 dias":
+        return _resample_trading_sessions(df, 3)
     rule = {"Semanal": "W-FRI", "Mensal": "ME"}[timeframe]
     out = df.resample(rule).agg(
         {"Open": "first", "High": "max", "Low": "min", "Close": "last", "Volume": "sum"}
