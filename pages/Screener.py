@@ -399,7 +399,9 @@ with st.sidebar:
         key="ticker_text",
         help="Você pode editar a lista manualmente depois de carregar qualquer universo.",
     )
-    timeframe = st.selectbox("Timeframe", ["Diário", "Semanal", "Mensal"])
+    timeframe = st.selectbox("Timeframe", ["Diário", "2 dias", "3 dias", "Semanal", "Mensal"])
+    if timeframe in {"2 dias", "3 dias"}:
+        st.caption("Candles multi-dia formados por pregões consecutivos da B3; fins de semana e feriados não contam.")
     history_period = st.selectbox("Histórico", ["6mo", "1y", "2y", "5y", "10y"], index=2)
 
     st.divider()
