@@ -72,10 +72,7 @@ def _bvmf_session_ordinals(end_year: int) -> dict[pd.Timestamp, int]:
         start=BVMF_MULTI_DAY_ANCHOR.strftime("%Y-%m-%d"),
         end=f"{end_year + 1}-12-31",
     )
-    sessions = calendar.sessions_in_range(
-        BVMF_MULTI_DAY_ANCHOR,
-        pd.Timestamp(f"{end_year + 1}-12-31"),
-    )
+    sessions = calendar.sessions_in_range(BVMF_MULTI_DAY_ANCHOR, calendar.last_session)
     return {pd.Timestamp(session).tz_localize(None): idx for idx, session in enumerate(sessions)}
 
 
